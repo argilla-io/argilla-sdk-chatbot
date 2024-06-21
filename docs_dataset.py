@@ -113,12 +113,6 @@ def main():
         default="docs",
         help="Name of the docs folder in the repo, defaults to 'docs'.",
     )
-    # parser.add_argument(
-    #     "--max_chars",
-    #     type=int,
-    #     default=256,
-    #     help="Maximum number of characters for each chunk. Defaults to 256.",
-    # )
     parser.add_argument(
         "--output_dir",
         help="Path to save the downloaded files from the repo (optional)",
