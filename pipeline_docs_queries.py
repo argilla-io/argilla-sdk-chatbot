@@ -9,7 +9,7 @@ from distilabel.llms import InferenceEndpointsLLM
 from distilabel.steps.tasks import GenerateSentencePair
 from distilabel.steps.tasks.base import Task
 from distilabel.steps.tasks.typing import ChatType
-from distilabel.steps import ExpandColumns
+from distilabel.steps import ExpandColumns, CombineKeys
 
 from distilabel.steps.base import Step, StepInput
 
@@ -58,41 +58,6 @@ class MultipleQueries(Task):
             queries = queries[1:]
         queries = [q.strip() for q in queries]
         return {"queries": queries}
-
-
-def combine_keys(input_dict, keys: List[str], new_key: str = "combined_key"):
-    result = input_dict.copy()  # preserve the original dictionary
-    combined = []
-    for key in keys:
-        to_combine = result.pop(key)
-        if isinstance(to_combine, str):
-            to_combine = [to_combine]
-        combined += to_combine
-    result[new_key] = combined
-    return result
-
-
-# TODO: Move this Step class to distilabel core, it may result useful enough
-class CombineKeys(Step):
-    keys: List[str]
-    output_key: str = None
-
-    @property
-    def inputs(self) -> List[str]:
-        return self.keys
-
-    @property
-    def outputs(self) -> List[str]:
-        return [self.output_key] if self.output_key else ["combined_key"]
-
-    @override
-    def process(self, inputs: StepInput) -> "StepOutput":
-        for input in inputs:
-            yield combine_keys(
-                input,
-                keys=self.keys,
-                new_key=self.output_key,
-            )
 
 
 with Pipeline(
