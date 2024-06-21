@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict, List, Union, Optional, TYPE_CHECKING
 
-from typing_extensions import override
-
 from distilabel.pipeline import Pipeline
 from distilabel.steps import LoadDataFromHub
 from distilabel.llms import InferenceEndpointsLLM
@@ -10,11 +8,6 @@ from distilabel.steps.tasks import GenerateSentencePair
 from distilabel.steps.tasks.base import Task
 from distilabel.steps.tasks.typing import ChatType
 from distilabel.steps import ExpandColumns, CombineKeys
-
-from distilabel.steps.base import Step, StepInput
-
-if TYPE_CHECKING:
-    from distilabel.steps.typing import StepOutput
 
 
 multiply_queries_template = (
@@ -105,7 +98,6 @@ with Pipeline(
     )
     expand_columns = ExpandColumns(
         columns=["positive"],
-        # output_mappings={"concat_positive": "positive"},
     )
 
     (
