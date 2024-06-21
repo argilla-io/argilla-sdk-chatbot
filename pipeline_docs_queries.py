@@ -118,6 +118,12 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         help="Do a dry run for testing purposes.",
     )
+    parser.add_argument(
+        "-n",
+        "--dataset-hub-name",
+        help="Name of the repository dataset in the Hugging Face Hub, or folder to save the distiset locally.",
+        default="plaguss/argilla_sdk_docs_queries"
+    )
     args = parser.parse_args()
 
     pipeline_parameters = {
@@ -144,10 +150,10 @@ if __name__ == "__main__":
             batch_size=1,
             parameters=pipeline_parameters
         )
-        distiset.save_to_disk(Path.home() / "Downloads/argilla_sdk_docs_queries")
+        distiset.save_to_disk(Path.home() / "Downloads" / args.dataset_hub_name)
     
     else:
         distiset = pipeline.run(
             parameters=pipeline_parameters
         )
-        distiset.push_to_hub("plaguss/argilla_sdk_docs_queries")
+        distiset.push_to_hub(args.dataset_hub_name)
