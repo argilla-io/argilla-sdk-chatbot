@@ -144,7 +144,7 @@ client_kwargs = {
     "temperature": 0.3,
     "top_p": None,
     "top_k": None,
-    "stop_sequences": None,
+    "stop_sequences": ["<|eot_id|>", "<|end_of_text|>"],
     "seed": None,
 }
 

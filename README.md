@@ -6,9 +6,13 @@ Building a chatbot for Argilla SDK Step by step
 The idea is to document the process and generate a blog post from it, as well as deploying the gradio app to Hugging Face Spaces.
 For the blog we should center around generating the initial dataset to fine tune the embedding model.
 
-Still needs to upload the data to argilla to explore it along the different steps, but wanted to get something working first.
+Next steps:
 
-## Contents
+- [ ] Create an argilla instance to upload and explore the different datasets (this should help reviewing the biggest issues with the chunking of the docs).
+- [ ] Start drafting a blog post.
+- [ ] Automatically upload the lancedb file to the HF repo.
+
+## Contents
 
 ### `docs_dataset.py`
 
