@@ -10,7 +10,6 @@ Next steps:
 
 - [ ] Create an argilla instance to upload and explore the different datasets (this should help reviewing the biggest issues with the chunking of the docs).
 - [ ] Start drafting a blog post.
-- [ ] Automatically upload the lancedb file to the HF repo.
 
 ## Contents
 
