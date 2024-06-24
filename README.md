@@ -8,7 +8,6 @@ For the blog we should center around generating the initial dataset to fine tune
 
 Next steps:
 
-- [ ] Create an argilla instance to upload and explore the different datasets (this should help reviewing the biggest issues with the chunking of the docs).
 - [ ] Start drafting a blog post.
 
 ## Contents
@@ -50,6 +49,11 @@ python docs_dataset.py \
 
 Final dataset: [plaguss/argilla_sdk_docs_queries](https://huggingface.co/datasets/plaguss/argilla_sdk_docs_queries).
 
+### `argilla_datasets.ipynb`
+
+This notebook contains the steps to upload the datasets to explore them in argilla.
+
+The Hugging Face Space contains the datasets: [Argilla datasets](https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot). They use the same names as in the Hugging Face Hub.
 
 ### `train_embeddings.ipynb`
 
