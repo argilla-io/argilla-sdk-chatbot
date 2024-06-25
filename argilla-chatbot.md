@@ -25,7 +25,7 @@ ADD SUMMARY HERE.
     - [Fine-Tune the embedding model](#fine-tune-the-embedding-model)
 - [The vector database](#create-the-vector-database)
 - [Creating our ChatBot](#next-steps)
-    - [Creating a Gradio App](#creating-the-gradio-app)
+    - [The Gradio App](#the-gradio-app)
     - [Deploy the ChatBot app on Hugging Face Spaces](#deploy-the-chatbot-app-on-hugging-face-spaces)
     - [Playing around with our chatbot](#play-around-with-your-chatbot)    
 - [Next Steps](#next-steps)
@@ -502,13 +502,297 @@ This dataset setting was made to explore the dataset, but we could use prepare i
 
 ### Fine-Tune the embedding model
 
-This will be a guide over the blog already done.
+The dataset to fine tune our custom embedding model is ready, let's see how to train our model.
+
+We will go over the following notebook: [`train_embedding.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/train_embedding.ipynb), which is almost a copy from this nice [blog post](https://www.philschmid.de/fine-tune-embedding-model-for-rag) by Philipp Schmid.
+
+There is a perfect overview of the process in that blog post, so we will only go over the differences in our case, please read the blog post for more information on the decisions, and take a look at the notebook for all the details.
+
+#### Prepare the embedding dataset
+
+We start by downloading the dataset, select the relevant columns (already with the names expected by `Sentence Transformers`), adding and `id` column, and splitting into 90/10 for training/testing. After that, the dataset is saved as json lines to be read again by the trainer:
+
+```python
+# Load dataset from the hub
+dataset = (
+    load_dataset("plaguss/argilla_sdk_docs_queries", split="train")
+    .select_columns(["anchor", "positive", "negative"])  # Select the relevant columns
+    .add_column("id", range(len(dataset)))               # Add an id column to the dataset
+    .train_test_split(test_size=0.1)                     # split dataset into a 10% test set
+)
+ 
+# save datasets to disk
+dataset["train"].to_json("train_dataset.json", orient="records")
+dataset["test"].to_json("test_dataset.json", orient="records")
+```
+
+#### Load the baseline model
+
+Once we have the dataset, we can load the baseline model, which will be the same used in the reference blog:
+
+```python
+from sentence_transformers import SentenceTransformerModelCardData, SentenceTransformer
+ 
+model = SentenceTransformer(
+    "BAAI/bge-base-en-v1.5",
+    model_card_data=SentenceTransformerModelCardData(
+        language="en",
+        license="apache-2.0",
+        model_name="BGE base ArgillaSDK Matryoshka",
+    ),
+)
+```
+
+#### Define the loss function
+
+Based on our dataset format, we are going to use the `TripletLoss` instead of the `MultipleNegativesRankingLoss` to make use of our `(anchor-positive-negative)` triplets, in combination with the `MatryoshkaLoss` (you can find more information on this type of loss in [this article](https://huggingface.co/blog/matryoshka)):
+
+```python
+from sentence_transformers.losses import MatryoshkaLoss, TripletLoss
+ 
+inner_train_loss = TripletLoss(model)
+train_loss = MatryoshkaLoss(
+    model, inner_train_loss, matryoshka_dims=[768, 512, 256, 128, 64]
+)
+```
+
+#### Defining the training strategy
+
+With the baseline model and the loss ready, let's define thet training arguments. This model was fine tuned in an `Apple M2 Pro`, and there's a slight modification that must be made. Other than setting a smaller `per_device_train_batch_size` and `per_device_eval_batch_size` due to the small amount of resources with respect to the original blogpost, we have to remove the `tf32` and `bf16` precision as these aren't supported, as well as the optimizer `adamw_torch_fused` (this optimizer can also be used in a google colab notebook, and the training can be done decently fast there too):
+
+```python
+from sentence_transformers import SentenceTransformerTrainingArguments
+  
+# define training arguments
+args = SentenceTransformerTrainingArguments(
+    output_dir="bge-base-argilla-sdk-matryoshka", # output directory and hugging face model ID
+    num_train_epochs=3,                           # number of epochs
+    per_device_train_batch_size=8,                # train batch size
+    gradient_accumulation_steps=4,                # for a global batch size of 512
+    per_device_eval_batch_size=4,                 # evaluation batch size
+    warmup_ratio=0.1,                             # warmup ratio
+    learning_rate=2e-5,                           # learning rate, 2e-5 is a good value
+    lr_scheduler_type="cosine",                   # use constant learning rate scheduler
+    eval_strategy="epoch",                        # evaluate after each epoch
+    save_strategy="epoch",                        # save after each epoch
+    logging_steps=5,                              # log every 10 steps
+    save_total_limit=1,                           # save only the last 3 models
+    load_best_model_at_end=True,                  # load the best model when training ends
+    metric_for_best_model="eval_dim_512_cosine_ndcg@10",  # Optimizing for the best ndcg@10 score for the 512 dimension
+)
+```
+
+#### Train and save the final model
+
+```python
+from sentence_transformers import SentenceTransformerTrainer
+ 
+trainer = SentenceTransformerTrainer(
+    model=model,    # bg-base-en-v1
+    args=args,      # training arguments
+    train_dataset=train_dataset.select_columns(
+        ["anchor", "positive", "negative"]
+    ),  # training dataset
+    loss=train_loss,
+    evaluator=evaluator,
+)
+
+# start training, the model will be automatically saved to the hub and the output directory
+trainer.train()
+ 
+# save the best model
+trainer.save_model()
+ 
+# push model to hub
+trainer.model.push_to_hub("bge-base-argilla-sdk-matryoshka")
+```
+
+And that's it, we can take a look at the new model: [plaguss/bge-base-argilla-sdk-matryoshka](https://huggingface.co/plaguss/bge-base-argilla-sdk-matryoshka), the dataset card contains a lot of useful information!
+
+We will see the model in action in the following section, stay with us.
 
 ## The vector database
 
+In the previous sections, we created a dataset and fine-tuned a model for our Retrieval Augmented Generation chatbot, now it's time of building a vector database that will enable our chatbot to store and retrieve relevant information.
+
+There are lots of alternatives for this component, but to keep it simple, we decided to use [lancedb](https://lancedb.github.io/lancedb/), it's an embedded database that doesn't need any server, similar to SQLite, as we will see, it's quite easy to create a simple file to store our embeddings and move it around, and fast enough to retrieve the data for our use case.
+
+This section will make use of the following notebook: [`vector_db.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/vector_db.ipynb).
+
+After installing the dependencies, let's instantiate the database:
+
+```python
+import lancedb
+
+# Create a database locally, called `lancedb`
+db = lancedb.connect("./lancedb")
+```
+
+We should see a folder in our current working directory.
+
+Let's load our fine tuned model using `sentence-transformers` registry:
+
+```python
+import torch
+from lancedb.embeddings import get_registry
+
+model_name = "plaguss/bge-base-argilla-sdk-matryoshka"
+device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+
+model = get_registry().get("sentence-transformers").create(name=model_name, device=device)
+```
+
+The next step consists on creating the table. To define the Schema for the table, we will use a `LanceModel` much like a `pydantic.BaseModel` to create our `Docs` representation: 
+
+```python
+from lancedb.pydantic import LanceModel, Vector
+
+class Docs(LanceModel):
+    query: str = model.SourceField()
+    text: str = model.SourceField()
+    vector: Vector(model.ndims()) = model.VectorField()
+
+table_name = "docs"
+table = db.create_table(table_name, schema=Docs)
+```
+
+The previous snippet will create a table with 3 columns, one for the synthetic query (`query`), one that we will name `text` that contains the chunk from the documentation, and a `vector`, that will have associated the dimension from our model. After running the step, we can interact with the table.
+
+We already have our table in place, let's load the last dataset with the queries, and ingest them on our database:
+
+```python
+ds = load_dataset("plaguss/argilla_sdk_docs_queries", split="train")
+
+batch_size = 50
+for batch in tqdm.tqdm(ds.iter(batch_size), total=len(ds) // batch_size):
+    embeddings = model.generate_embeddings(batch["positive"])
+    df = pd.DataFrame.from_dict({"query": batch["positive"], "text": batch["anchor"], "vector": embeddings})
+    table.add(df)
+```
+
+In the previous snippet we are iterating over the dataset in batches, generating embeddings from our `positive` column (the synthetic queries), and creating a dataframe to be added to the table, that contains the columns `query`, `text` and `vector`, containing the `positive` and `anchor` columns, plus the newly generated embeddings respectively.
+
+Let's see it in action by making a query. For a sample query: "How can I get the current user?" (using the Argilla SDK), we will obtain the embedding using our custom embedding model, search for the first 3 occurences in our table (using the `cosine` metric), and extract just the `text` column, which corresponds to the chunk of the docs:
+
+```python
+query = "How can I get the current user?"
+embedded_query = model.generate_embeddings([query])
+
+retrieved = (
+    table
+        .search(embedded_query[0])
+        .metric("cosine")
+        .limit(3)
+        .select(["text"])  # Just grab the chunk to use for context
+        .to_list()
+)
+```
+
+This would be the result:
+
+```python
+>>> retrieved
+[{'text': 'python\nuser = client.users("my_username")\n\nThe current user of the rg.Argilla client can be accessed using the me attribute:\n\npython\nclient.me\n\nClass Reference\n\nrg.User\n\n::: argilla_sdk.users.User\n    options:\n        heading_level: 3',
+  '_distance': 0.1881886124610901},
+ {'text': 'python\nuser = client.users("my_username")\n\nThe current user of the rg.Argilla client can be accessed using the me attribute:\n\npython\nclient.me\n\nClass Reference\n\nrg.User\n\n::: argilla_sdk.users.User\n    options:\n        heading_level: 3',
+  '_distance': 0.20238929986953735},
+ {'text': 'Retrieve a user\n\nYou can retrieve an existing user from Argilla by accessing the users attribute on the Argilla class and passing the username as an argument.\n\n```python\nimport argilla_sdk as rg\n\nclient = rg.Argilla(api_url="", api_key="")\n\nretrieved_user = client.users("my_username")\n```',
+  '_distance': 0.20401990413665771}]
+
+>>> print(retrieved[0]["text"])
+python
+user = client.users("my_username")
+
+The current user of the rg.Argilla client can be accessed using the me attribute:
+
+python
+client.me
+
+Class Reference
+
+rg.User
+
+::: argilla_sdk.users.User
+    options:
+        heading_level: 3
+```
+
+From what can be seen, the first row seems to contain information related to the query (we should use `client.me` to get the current user), and also some extra content due to the chunking strategy that seems to include code from the API reference. The chunk could be cleaner, and we could iterate on the chunking strategy (reviewing the dataset in argilla can help a lot with this step), but it seems good enough to continue with it.
+
+Now that we have a database, we will store it as another artifact in our dataset repository. You can visit the repo to find the functions that can help us, but it's as simple as running the following function:
+
+```python
+import Path
+import os
+
+local_dir = Path.home() / ".cache/argilla_sdk_docs_db"
+
+upload_database(
+    local_dir / "lancedb",
+    repo_id="plaguss/argilla_sdk_docs_queries",
+    token=os.getenv("HF_API_TOKEN")
+)
+```
+
+This will create a new file called `lancedb.tar.gz` (it can be seen at [`plaguss/argilla_sdk_docs_queries`](https://huggingface.co/datasets/plaguss/argilla_sdk_docs_queries/tree/main) files), with the vector database. And we can we can just download in the same way (again, the functions can be seen in the notebook):
+
+```python
+db_path = download_database(repo_id)
+```
+
+Now we would have the database downloaded (by default the file will be placed at `Path.home() / ".cache/argilla_sdk_docs_db"`, but this can be easily changed), and the path pointing to it. We can connect again to it and check everything works as expected:
+
+```python
+db = lancedb.connect(str(db_path))
+table = db.open_table(table_name)
+
+query = "how can I delete users?"
+
+retrieved = (
+    table
+        .search(query)
+        .metric("cosine")
+        .limit(1)
+        .to_pydantic(Docs)
+)
+
+for d in retrieved:
+    print("======\nQUERY\n======")
+    print(d.query)
+    print("======\nDOC\n======")
+    print(d.text)
+
+# ======
+# QUERY
+# ======
+# Is it possible to remove a user from Argilla by utilizing the delete function on the User class?
+# ======
+# DOC
+# ======
+# Delete a user
+
+# You can delete an existing user from Argilla by calling the delete method on the User class.
+
+# ```python
+# import argilla_sdk as rg
+
+# client = rg.Argilla(api_url="", api_key="")
+
+# user_to_delete = client.users('my_username')
+
+# deleted_user = user_to_delete.delete()
+# ```
+```
+
+The database for the retrieval of documents is done, let's go for the app!
+
 ## Creating our ChatBot
 
-### Creating a Gradio App
+All the pieces are ready for our chatbot, we need to connect them and make it available in an interface.
+
+### The Gradio App
+
+Using [gradio](https://www.gradio.app/) we can easily create chatbot apps. This will be a simple interface to showcase our RAG chatbot.
 
 ### Deploy the ChatBot app on Hugging Face Spaces
 
