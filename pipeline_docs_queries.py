@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Union, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Union, Optional
 
 from distilabel.pipeline import Pipeline
 from distilabel.steps import LoadDataFromHub
@@ -68,6 +68,7 @@ with Pipeline(
         model_id="meta-llama/Meta-Llama-3-70B-Instruct",
         tokenizer_id="meta-llama/Meta-Llama-3-70B-Instruct",
     )
+
     generate_sentence_pair = GenerateSentencePair(
         name="generate_sentence_pair",
         triplet=True,  # Generate positive and negative
@@ -91,11 +92,13 @@ with Pipeline(
         input_mappings={"query": "positive"},
         output_mappings={"model_name": "model_name_query_multiplied"},
     )
+
     combiner = CombineKeys(
         name="combiner",
         keys=["positive", "queries"],
         output_key="positive"
     )
+
     expand_columns = ExpandColumns(
         columns=["positive"],
     )
