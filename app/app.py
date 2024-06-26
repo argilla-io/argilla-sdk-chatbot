@@ -1,15 +1,42 @@
-from typing import Optional, Any
+from typing import Optional, Generator
 import os
 from pathlib import Path
 import tarfile
 from dataclasses import dataclass
 
+import torch
 import lancedb
 from lancedb.embeddings import get_registry
 from huggingface_hub.file_download import hf_hub_download
-from huggingface_hub import InferenceClient
+from huggingface_hub import InferenceClient, login
 from transformers import AutoTokenizer
 import gradio as gr
+
+
+@dataclass
+class Settings:
+    """Settings class to store useful variables for the App."""
+
+    LANCEDB: str = "lancedb"
+    LANCEDB_FILE_TAR: str = "lancedb.tar.gz"
+    TOKEN: str = os.getenv("HF_API_TOKEN")
+    LOCAL_DIR: Path = Path.home() / ".cache/argilla_sdk_docs_db"
+    REPO_ID: str = "plaguss/argilla_sdk_docs_queries"
+    TABLE_NAME: str = "docs"
+    MODEL_NAME: str = "plaguss/bge-base-argilla-sdk-matryoshka"
+    DEVICE: str = (
+        "mps"
+        if torch.backends.mps.is_available()
+        else "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
+    MODEL_ID: str = "meta-llama/Meta-Llama-3-70B-Instruct"
+
+
+settings = Settings()
+
+login(token=settings.TOKEN)
 
 
 def untar_file(source: Path) -> Path:
@@ -27,69 +54,124 @@ def untar_file(source: Path) -> Path:
     return new_filename
 
 
-@dataclass
-class Settings:
-    LANCEDB: str = "lancedb"
-    LANCEDB_FILE_TAR: str = "lancedb.tar.gz"
-    TOKEN: str = os.getenv("HF_API_TOKEN")
-    LOCAL_DIR: Path = Path.home() / ".cache/argilla_sdk_docs_db"
-    REPO_ID: str = "plaguss/argilla_sdk_docs_queries"
-    TABLE_NAME: str = "docs"
-    MODEL_NAME: str = "plaguss/bge-base-argilla-sdk-matryoshka"
-    DEVICE: str = "mps"
+def download_database(
+    repo_id: str,
+    lancedb_file: str = "lancedb.tar.gz",
+    local_dir: Path = Path.home() / ".cache/argilla_sdk_docs_db",
+    token: str = os.getenv("HF_API_TOKEN"),
+) -> Path:
+    """Helper function to download the database. Will download a compressed lancedb stored
+    in a Hugging Face repository.
 
+    Args:
+        repo_id: Name of the repository where the databsase file is stored.
+        lancedb_file: Name of the compressed file containing the lancedb database.
+            Defaults to "lancedb.tar.gz".
+        local_dir: Path where the file will be donwloaded to. Defaults to
+            Path.home()/".cache/argilla_sdk_docs_db".
+        token: Token for the Hugging Face hub API. Defaults to os.getenv("HF_API_TOKEN").
 
-settings = Settings()
+    Returns:
+        The path pointing to the database already uncompressed and ready to be used.
+    """
+    lancedb_download = Path(
+        hf_hub_download(
+            repo_id, lancedb_file, repo_type="dataset", token=token, local_dir=local_dir
+        )
+    )
+    return untar_file(lancedb_download)
+
 
 # Get the model to create the embeddings
-model = get_registry().get("sentence-transformers").create(name=settings.MODEL_NAME, device=settings.DEVICE)
-
-# from lancedb.pydantic import LanceModel, Vector
-# class Docs(LanceModel):
-#     query: str = model.SourceField()
-#     text: str = model.SourceField()
-#     vector: Vector(model.ndims()) = model.VectorField()
+model = (
+    get_registry()
+    .get("sentence-transformers")
+    .create(name=settings.MODEL_NAME, device=settings.DEVICE)
+)
 
 
 class Database:
-    def __init__(self, settings: Settings):
+    """Interaction with the vector database to retrieve the chunks.
+
+    On instantiation, will donwload the lancedb database if nos already found in
+    the expected location. Once ready, the only functionality available is
+    to retrieve the doc chunks to be used as examples for the LLM.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        """
+        Args:
+            settings: Instance of the settings.
+        """
         self.settings = settings
-        self.table = self.get_table_from_db()
+        self._table: lancedb.table.LanceTable = self.get_table_from_db()
 
     def get_table_from_db(self) -> lancedb.table.LanceTable:
+        """Downloads the database containing the embedded docs.
+
+        If the file is not found in the expected location, will download it, and
+        then create the connection, open the table and pass it.
+
+        Returns:
+            The table of the database containing the embedded chunks.
+        """
         lancedb_db_path = self.settings.LOCAL_DIR / self.settings.LANCEDB
+
         if not lancedb_db_path.exists():
-            lancedb_download = Path(
-                hf_hub_download(
-                    self.settings.REPO_ID,
-                    self.settings.LANCEDB_FILE_TAR,
-                    repo_type="dataset",
-                    token=self.settings.TOKEN,
-                    local_dir=self.settings.LOCAL_DIR
-                )
+            lancedb_db_path = download_database(
+                self.settings.REPO_ID,
+                lancedb_file=self.settings.LANCEDB_FILE_TAR,
+                local_dir=self.settings.LOCAL_DIR,
+                token=self.settings.TOKEN,
             )
 
-            lancedb_db_path = untar_file(lancedb_download)
-
         db = lancedb.connect(str(lancedb_db_path))
-        table_name = "docs"
-        table = db.open_table(table_name)
+        table = db.open_table(self.settings.TABLE_NAME)
         return table
 
-    def retrieve_doc_chunks(self, query: str, limit: int = 12, hard_limit: int = 4) -> str:
-        # TODO: THE QUERY FOR THE SEARCH MUST BE A VECTOR, SO WE HAVE TO EMBED THE DATA FIRST
-        # embedded_query = model.generate_embeddings([query])
+    def retrieve_doc_chunks(
+        self, query: str, limit: int = 12, hard_limit: int = 4
+    ) -> str:
+        """Search for similar queries in the database, and return the context to be passed
+        to the LLM.
+
+        Args:
+            query: Query from the user.
+            limit: Number of similar items to retrieve. Defaults to 12.
+            hard_limit: Limit of responses to take into account.
+                As we generated repeated questions initially, the database may contain
+                repeated chunks of documents, in the initial `limit` selection, using
+                `hard_limit` we limit to this number the total of unique retrieved chunks.
+                Defaults to 4.
+
+        Returns:
+            The context to be used by the model to generate the response.
+        """
+        # Embed the query to use our custom model instead of the default one.
+        embedded_query = model.generate_embeddings([query])
+        field_to_retrieve = "text"
         retrieved = (
-            self.table
-                .search(query)
-                # .search(embedded_query[0])
-                .metric("cosine")
-                .limit(limit)
-                .select(["text"])  # Just grab the chunk to use for context
-                .to_list()
+            self._table.search(embedded_query[0])
+            .metric("cosine")
+            .limit(limit)
+            .select([field_to_retrieve])  # Just grab the chunk to use for context
+            .to_list()
         )
-        # We have repeated questions (up to 4) for a given chunk, so we may get repeated chunks.
-        # Request more than necessary and filter them afterwards
+        return self._prepare_context(retrieved, hard_limit)
+
+    @staticmethod
+    def _prepare_context(retrieved: list[dict[str, str]], hard_limit: int) -> str:
+        """Prepares the examples to be used in the LLM prompt.
+
+        Args:
+            retrieved: The list of retrieved chunks.
+            hard_limit: Max number of doc pieces to return.
+
+        Returns:
+            Context to be used by the LLM.
+        """
+        # We have repeated questions (up to 4) for a given chunk, so we may get repeated chunks.
+        # Request more than necessary and filter them afterwards
         responses = []
         unique_responses = set()
 
@@ -111,25 +193,26 @@ database = Database(settings=settings)
 
 
 def get_client_and_tokenizer(
-    model_id: str = "meta-llama/Meta-Llama-3-70B-Instruct",
-    tokenizer_id: Optional[str] = None
-) -> InferenceClient:
+    model_id: str = settings.MODEL_ID, tokenizer_id: Optional[str] = None
+) -> tuple[InferenceClient, AutoTokenizer]:
+    """Obtains the inference client and the tokenizer corresponding to the model.
+
+    Args:
+        model_id: The name of the model. Currently it must be one in the free tier.
+            Defaults to "meta-llama/Meta-Llama-3-70B-Instruct".
+        tokenizer_id: The name of the corresponding tokenizer. Defaults to None,
+            in which case it will use the same as the `model_id`.
+
+    Returns:
+        The client and tokenizer chosen.
+    """
     if tokenizer_id is None:
         tokenizer_id = model_id
 
     client = InferenceClient()
-    base_url = client._resolve_url(
-        model=model_id, task="text-generation"
-    )
-    client = InferenceClient(
-        model=base_url,
-        token=os.getenv("HF_API_TOKEN")
-    )
-    # TODO: Move to an async client
-    #client = AsyncInferenceClient(
-    #    model=base_url,
-    #    token=api_key,
-    #)
+    base_url = client._resolve_url(model=model_id, task="text-generation")
+    # Note: We could move to the AsyncClient
+    client = InferenceClient(model=base_url, token=os.getenv("HF_API_TOKEN"))
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
     return client, tokenizer
@@ -144,7 +227,9 @@ client_kwargs = {
     "temperature": 0.3,
     "top_p": None,
     "top_k": None,
-    "stop_sequences": ["<|eot_id|>", "<|end_of_text|>"],
+    "stop_sequences": ["<|eot_id|>", "<|end_of_text|>"]
+    if settings.MODEL_ID.startswith("meta-llama/Meta-Llama-3")
+    else None,
     "seed": None,
 }
 
@@ -218,7 +303,17 @@ You can make use of the chunks of documents in the context to help you generatin
 """
 
 
-def prepare_input(message: str, history: Any):
+def prepare_input(message: str, history: list[tuple[str, str]]) -> str:
+    """Prepares the input to be passed to the LLM.
+
+    Args:
+        message: Message from the user, the query.
+        history: Previous list of messages from the user and the answers, as a list
+            of tuples with user/assistant messages.
+
+    Returns:
+        The string with the template formatted to be sent to the LLM.
+    """
     # Retrieve the context from the database
     context = database.retrieve_doc_chunks(message)
 
@@ -243,7 +338,17 @@ def prepare_input(message: str, history: Any):
     )[0]
 
 
-def chatty(message, history):
+def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
+    """Main function of the app, contains the interaction with the LLM.
+
+    Args:
+        message: Message from the user, the query.
+        history: Previous list of messages from the user and the answers, as a list
+            of tuples with user/assistant messages.
+
+    Yields:
+        The streaming response, it's printed in the interface as it's being received.
+    """
     prompt = prepare_input(message, history)
 
     partial_message = ""
@@ -252,24 +357,23 @@ def chatty(message, history):
         yield partial_message
 
 
-
 if __name__ == "__main__":
-
     import gradio as gr
+
     gr.ChatInterface(
         chatty,
         chatbot=gr.Chatbot(height=600),
-        textbox=gr.Textbox(placeholder="Ask me about the new argilla SDK", container=False, scale=7),
+        textbox=gr.Textbox(
+            placeholder="Ask me about the new argilla SDK", container=False, scale=7
+        ),
         title="Argilla SDK Chatbot",
         description="Ask a question about Argilla SDK",
         theme="soft",
         examples=[
             "How can I connect to an argilla server?",
             "How can I access a dataset?",
-            "How can I get the current user?"
+            "How can I get the current user?",
         ],
         cache_examples=True,
         retry_btn=None,
-        # undo_btn="Delete Previous",
-        # clear_btn="Clear",
     ).launch()
