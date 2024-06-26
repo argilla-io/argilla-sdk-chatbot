@@ -12,6 +12,12 @@ The idea is to open a PR once we have it ready at: https://github.com/huggingfac
 
 The blog is at `argilla-chatbot.md` file. If you think you can add/modify anything, please open a PR and add your name in the *authors*. You can take a look on how the blog works [here](https://github.com/huggingface/blog?tab=readme-ov-file#the-hugging-face-blog-repository-).
 
+## TODO
+
+- [ ] *The dataset should be rebuilt with an updated version of the docs?: [updated docs](https://github.com/argilla-io/argilla/tree/develop/argilla)*
+
+- [ ] Create an argilla instance to store the responses from the chatbot so we can review them later.
+
 ## Contents
 
 ### `docs_dataset.py`
