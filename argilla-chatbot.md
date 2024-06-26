@@ -1,47 +1,70 @@
 ---
 title: "Creating a chatbot for the new Argilla SDK: leveraging distilabel to fine tune a custom Embedding model for RAG"
-thumbnail: /blog/assets/101_decision-transformers-train/thumbnail.gif
+thumbnail: /blog/assets/argilla-sdk-chatbot/chatbot.png
 authors:
 - user: plaguss
 ---
 
 # Creating a chatbot for the new Argilla SDK: leveraging distilabel to fine tune a custom Embedding model for RAG
 
-## TODO
-
-*The dataset was built using an outdated version of the documentation, we should rebuild it pointing to the updated ones: [updated docs](https://github.com/argilla-io/argilla/tree/develop/argilla)*
-
 ## TL;DR
 
-ADD SUMMARY HERE.
+**Summary/motivation goes here**.
+
+If you prefer, you can skip click the next button.
+
+<div class="container">
+    <img src="./assets/blog/assets/argilla-sdk-chatbot/chatbot-intro.png" alt="Snow">
+    <button id="btn">Go to app</button>
+    <style>
+        #btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            -ms-transform: translate(-50%, -50%);
+            background-color: #4CAF50;
+            color: white;
+            font-size: 16px;
+            padding: 12px 24px;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+            width: 30%;
+            height: auto;
+        }
+    </style>
+</div>
 
 ## Table of Contents
 
-- [ADD MOTIVATION HERE](#motivation)
 - [Generating Synthetic Data for Fine-Tuning Custom Embedding Models](#generating-synthetic-data-for-fine-tuning-custom-embedding-models)
     - [Downloading and chunking data](#downloading-and-chunking-data)
     - [Generating synthetic data for our embedding model using distilabel](#generating-synthetic-data-for–our-embedding-model-using-distilabel)
     - [Explore the datasets in Argilla](#explore-the-datasets-in-argilla)
+        - [An Argilla dataset with chunks of technical documentation](#an-Argilla-dataset-with-chunks-of-technical-documentation)
+        - [An Argilla dataset with triplets to fine tune an embedding model](#an-Argilla-dataset-with-triplets-to-fine-tune-an-embedding-model)
     - [Fine-Tune the embedding model](#fine-tune-the-embedding-model)
-- [The vector database](#create-the-vector-database)
+        - [Prepare the embedding dataset](#prepare-the-embedding-dataset)
+        - [Load the baseline model](#load-the-baseline-model)
+        - [Define the loss function](#define-the-loss-function)
+        - [Define the training strategy](#define-the-training-strategy)
+        - [Train and save the final model](#train-and-save-the-final-model)
+- [The vector database](#the-vector-database)
+    - [Connect to the database](#connect-to-the-database)
+        - [Instantiate the fine tuned model](#instantiate-the-fine-tuned-model)
+    - [Create the table with the documentation chunks](#create-the-table-with-the-documentation-chunks)
+        - [Populate the table](#populate-the-table)
+        - [Store the database in the Hugging Face Hub](#store-the-database-in-the-Hugging-Face-Hub)
 - [Creating our ChatBot](#next-steps)
     - [The Gradio App](#the-gradio-app)
     - [Deploy the ChatBot app on Hugging Face Spaces](#deploy-the-chatbot-app-on-hugging-face-spaces)
     - [Playing around with our chatbot](#play-around-with-your-chatbot)    
 - [Next Steps](#next-steps)
 
-## MOTIVATION
-
-TBD
-
-Take a look at the following repository to see all the code that led to this blogpost at [argilla-sdk-chatbot](https://github.com/argilla-io/argilla-sdk-chatbot),
-we will refer to scripts or notebooks that can be found there.
-
 ## Generating Synthetic Data for Fine-Tuning Custom Embedding Models
 
-> TODO: Mention here the X message and blogpost shown in the references.
-
-ADD INTRODUCTION OF THE STEPS, AND WHY THE TYPE OF PIPELINE DEFINED. WANTED TO TRY THE TRIPLETS, OTHER STRATEGIES COULD ALSO WORK.
+> TODO: Mention here the X message from PhilSchmid and blog on generating synthetic data
 
 ### Downloading and chunking data
 
@@ -451,7 +474,7 @@ dataset.records.log(records=data, mapping={"filename": "filename", "chunks": "ch
 
 These are the kind of examples you could expect to see:
 
-![argilla-img-1](/assets/blog/argilla-img-1.png)
+![argilla-img-1](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-1.png)
 
 #### An Argilla dataset with triplets to fine tune an embedding model
 
@@ -496,7 +519,7 @@ In this case we have 3 `TextFields` as we have the `anchor`, `positive` and `neg
 
 An example can be seen in the following image:
 
-![argilla-img-2](/assets/blog/argilla-img-2.png)
+![argilla-img-2](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-2.png)
 
 This dataset setting was made to explore the dataset, but we could use prepare it to find wrong examples, improve the questions generated, and iterate on the dataset to be used in the following section.
 
@@ -556,7 +579,7 @@ train_loss = MatryoshkaLoss(
 )
 ```
 
-#### Defining the training strategy
+#### Define the training strategy
 
 With the baseline model and the loss ready, let's define thet training arguments. This model was fine tuned in an `Apple M2 Pro`, and there's a slight modification that must be made. Other than setting a smaller `per_device_train_batch_size` and `per_device_eval_batch_size` due to the small amount of resources with respect to the original blogpost, we have to remove the `tf32` and `bf16` precision as these aren't supported, as well as the optimizer `adamw_torch_fused` (this optimizer can also be used in a google colab notebook, and the training can be done decently fast there too):
 
@@ -619,6 +642,8 @@ There are lots of alternatives for this component, but to keep it simple, we dec
 
 This section will make use of the following notebook: [`vector_db.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/vector_db.ipynb).
 
+### Connect to the database
+
 After installing the dependencies, let's instantiate the database:
 
 ```python
@@ -629,6 +654,8 @@ db = lancedb.connect("./lancedb")
 ```
 
 We should see a folder in our current working directory.
+
+#### Instantiate the fine tuned model
 
 Let's load our fine tuned model using `sentence-transformers` registry:
 
@@ -641,6 +668,8 @@ device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is
 
 model = get_registry().get("sentence-transformers").create(name=model_name, device=device)
 ```
+
+### Create the table with the documentation chunks
 
 The next step consists on creating the table. To define the Schema for the table, we will use a `LanceModel` much like a `pydantic.BaseModel` to create our `Docs` representation: 
 
@@ -657,6 +686,8 @@ table = db.create_table(table_name, schema=Docs)
 ```
 
 The previous snippet will create a table with 3 columns, one for the synthetic query (`query`), one that we will name `text` that contains the chunk from the documentation, and a `vector`, that will have associated the dimension from our model. After running the step, we can interact with the table.
+
+#### Populate the table
 
 We already have our table in place, let's load the last dataset with the queries, and ingest them on our database:
 
@@ -718,6 +749,8 @@ rg.User
 ```
 
 From what can be seen, the first row seems to contain information related to the query (we should use `client.me` to get the current user), and also some extra content due to the chunking strategy that seems to include code from the API reference. The chunk could be cleaner, and we could iterate on the chunking strategy (reviewing the dataset in argilla can help a lot with this step), but it seems good enough to continue with it.
+
+#### Store the database in the Hugging Face Hub
 
 Now that we have a database, we will store it as another artifact in our dataset repository. You can visit the repo to find the functions that can help us, but it's as simple as running the following function:
 
@@ -792,19 +825,323 @@ All the pieces are ready for our chatbot, we need to connect them and make it av
 
 ### The Gradio App
 
-Using [gradio](https://www.gradio.app/) we can easily create chatbot apps. This will be a simple interface to showcase our RAG chatbot.
+Using [gradio](https://www.gradio.app/) we can easily create chatbot apps. This will be a simple interface to showcase our RAG chatbot. As we did with the other sections of this article, you can take a look at the app in the following script: [app.py](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/app/app.py).
+
+Let's start by the end to see how easy it is to have a cool interface like the following:
+
+![chatty](./assets/blog/assets/argilla-sdk-chatbot/img_1.png)
+
+```python
+import gradio as gr
+
+gr.ChatInterface(
+    chatty,
+    chatbot=gr.Chatbot(height=600),
+    textbox=gr.Textbox(placeholder="Ask me about the new argilla SDK", container=False, scale=7),
+    title="Argilla SDK Chatbot",
+    description="Ask a question about Argilla SDK",
+    theme="soft",
+    examples=[
+        "How can I connect to an argilla server?",
+        "How can I access a dataset?",
+        "How can I get the current user?"
+    ],
+    cache_examples=True,
+    retry_btn=None,
+).launch()
+```
+
+And that's it!! There is an awesome guide to show you how to create a [Chatbot with Gradio](https://www.gradio.app/guides/creating-a-chatbot-fast), you can take a look and see how to make your own, but it couldn't get simpler than that.
+
+Let's go over the different components of the `app.py` script until we get to the `chatty` function to see what it does.
+
+We will omit some of the details for brevity, and will just discuss the main components.
+
+Let's start with the `Database` class:
+
+<details close>
+<summary>Click to see Database class</summary>
+<br>
+
+```python
+class Database:
+
+    def __init__(self, settings: Settings) -> None:
+
+        self.settings = settings
+        self._table: lancedb.table.LanceTable = self.get_table_from_db()
+
+    def get_table_from_db(self) -> lancedb.table.LanceTable:
+
+        lancedb_db_path = self.settings.LOCAL_DIR / self.settings.LANCEDB
+
+        if not lancedb_db_path.exists():
+            lancedb_db_path = download_database(
+                self.settings.REPO_ID,
+                lancedb_file=self.settings.LANCEDB_FILE_TAR,
+                local_dir=self.settings.LOCAL_DIR,
+                token=self.settings.TOKEN,
+            )
+
+        db = lancedb.connect(str(lancedb_db_path))
+        table = db.open_table(self.settings.TABLE_NAME)
+        return table
+
+    def retrieve_doc_chunks(
+        self, query: str, limit: int = 12, hard_limit: int = 4
+    ) -> str:
+
+        # Embed the query to use our custom model instead of the default one.
+        embedded_query = model.generate_embeddings([query])
+        field_to_retrieve = "text"
+        retrieved = (
+            self._table.search(embedded_query[0])
+            .metric("cosine")
+            .limit(limit)
+            .select([field_to_retrieve])  # Just grab the chunk to use for context
+            .to_list()
+        )
+        return self._prepare_context(retrieved, hard_limit)
+
+    @staticmethod
+    def _prepare_context(retrieved: list[dict[str, str]], hard_limit: int) -> str:
+
+        # We have repeated questions (up to 4) for a given chunk, so we may get repeated chunks.
+        # Request more than necessary and filter them afterwards
+        responses = []
+        unique_responses = set()
+
+        for item in retrieved:
+            chunk = item["text"]
+            if chunk not in unique_responses:
+                unique_responses.add(chunk)
+                responses.append(chunk)
+
+        context = ""
+        for i, item in enumerate(responses[:hard_limit]):
+            if i > 0:
+                context += "\n\n"
+            context += f"---\n{item}"
+        return context
+```
+
+</details>
+
+That's all we need to deal with our database. Once our embedding model is downloaded (we already saw how to do it in the previous section using `lancedb`), we can instantiate the class, it will download the database to wherever the app is deployed (in this case in the Hugging Face Space where we will deploy it), and we will be ready to go:
+
+```python
+database = Database(settings=settings)  # The settings can be seen in the following snippet
+
+context = database.retrieve_doc_chunks("How can I delete a user?", limit=2, hard_limit=1)
+
+>>> print(context)
+# ---
+# Delete a user
+
+# You can delete an existing user from Argilla by calling the delete method on the User class.
+
+# ```python
+# import argilla_sdk as rg
+
+# client = rg.Argilla(api_url="", api_key="")
+
+# user_to_delete = client.users('my_username')
+
+# deleted_user = user_to_delete.delete()
+# ```
+```
+
+<details close>
+<summary>Click to see Settings class</summary>
+<br>
+
+```python
+@dataclass
+class Settings:
+    LANCEDB: str = "lancedb"
+    LANCEDB_FILE_TAR: str = "lancedb.tar.gz"
+    TOKEN: str = os.getenv("HF_API_TOKEN")
+    LOCAL_DIR: Path = Path.home() / ".cache/argilla_sdk_docs_db"
+    REPO_ID: str = "plaguss/argilla_sdk_docs_queries"
+    TABLE_NAME: str = "docs"
+    MODEL_NAME: str = "plaguss/bge-base-argilla-sdk-matryoshka"
+    DEVICE: str = (
+        "mps"
+        if torch.backends.mps.is_available()
+        else "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
+    MODEL_ID: str = "meta-llama/Meta-Llama-3-70B-Instruct"
+```
+
+</details>
+
+Now that we have the database, we need our model ready to send the queries. For this case, we will the [inference endpoints](https://huggingface.co/inference-endpoints/dedicated), they are easy to work with using the [`inference client`](https://huggingface.co/docs/text-generation-inference/basic_tutorials/consuming_tgi#inference-client) from the `huggingface_hub` library:
+
+```python
+def get_client_and_tokenizer(
+    model_id: str = settings.MODEL_ID, tokenizer_id: Optional[str] = None
+) -> tuple[InferenceClient, AutoTokenizer]:
+    if tokenizer_id is None:
+        tokenizer_id = model_id
+
+    client = InferenceClient()
+    base_url = client._resolve_url(model=model_id, task="text-generation")
+    # Note: We could move to the AsyncClient
+    client = InferenceClient(model=base_url, token=os.getenv("HF_API_TOKEN"))
+
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+    return client, tokenizer
+
+# Load the client and tokenizer
+client, tokenizer = get_client_and_tokenizer()
+```
+
+Now that the the components are ready, we need a function to prepare the prompt to be passed to our client:
+
+```python
+def prepare_input(message: str, history: list[tuple[str, str]]) -> str:
+
+    # Retrieve the context from the database
+    context = database.retrieve_doc_chunks(message)
+
+    # Prepare the conversation for the model.
+    conversation = []
+    for human, bot in history:
+        conversation.append({"role": "user", "content": human})
+        conversation.append({"role": "assistant", "content": bot})
+
+    conversation.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+    conversation.append(
+        {
+            "role": "user",
+            "content": ARGILLA_BOT_TEMPLATE.format(message=message, context=context),
+        }
+    )
+
+    return tokenizer.apply_chat_template(
+        [conversation],
+        tokenize=False,
+        add_generation_prompt=True,
+    )[0]
+```
+
+This function will take the same arguments `message` and `history` that the gradio [`ChatInterface`](https://www.gradio.app/docs/gradio/chatinterface) supplies us, obtain the documentation pieces from the database to help the LLM with the response, and prepare the prompt to be passet to our `LLM` model.
+
+<details close>
+<summary>Click to see the system prompt and the bot template</summary>
+<br>
+
+These are the `system_prompt` and the prompt template used. They are heavily inspired by [`wandbot`](https://github.com/wandb/wandbot) from Weights and Biases.
+
+````python
+SYSTEM_PROMPT = """\
+You are a support expert in Argilla SDK, whose goal is help users with their questions.
+As a trustworthy expert, you must provide truthful answers to questions using only the provided documentation snippets, not prior knowledge.
+Here are guidelines you must follow when responding to user questions:
+
+##Purpose and Functionality**
+- Answer questions related to the Argilla SDK.
+- Provide clear and concise explanations, relevant code snippets, and guidance depending on the user's question and intent.
+- Ensure users succeed in effectively understanding and using Argilla's features.
+- Provide accurate responses to the user's questions.
+
+**Specificity**
+- Be specific and provide details only when required.
+- Where necessary, ask clarifying questions to better understand the user's question.
+- Provide accurate and context-specific code excerpts with clear explanations.
+- Ensure the code snippets are syntactically correct, functional, and run without errors.
+- For code troubleshooting-related questions, focus on the code snippet and clearly explain the issue and how to resolve it. 
+- Avoid boilerplate code such as imports, installs, etc.
+
+**Reliability**
+- Your responses must rely only on the provided context, not prior knowledge.
+- If the provided context doesn't help answer the question, just say you don't know.
+- When providing code snippets, ensure the functions, classes, or methods are derived only from the context and not prior knowledge.
+- Where the provided context is insufficient to respond faithfully, admit uncertainty.
+- Remind the user of your specialization in Argilla SDK support when a question is outside your domain of expertise.
+- Redirect the user to the appropriate support channels - Argilla [community](https://join.slack.com/t/rubrixworkspace/shared_invite/zt-whigkyjn-a3IUJLD7gDbTZ0rKlvcJ5g) when the question is outside your capabilities or you do not have enough context to answer the question.
+
+**Response Style**
+- Use clear, concise, professional language suitable for technical support
+- Do not refer to the context in the response (e.g., "As mentioned in the context...") instead, provide the information directly in the response.
+
+**Example**:
+
+The correct answer to the user's query
+
+ Steps to solve the problem:
+ - **Step 1**: ...
+ - **Step 2**: ...
+ ...
+
+ Here's a code snippet
+
+ ```python
+ # Code example
+ ...
+ ```
+ 
+ **Explanation**:
+
+ - Point 1
+ - Point 2
+ ...
+"""
+
+ARGILLA_BOT_TEMPLATE = """\
+Please provide an answer to the following question related to Argilla's new SDK.
+
+You can make use of the chunks of documents in the context to help you generating the response.
+
+## Query:
+{message}
+
+## Context:
+{context}
+"""
+````
+
+</details>
+
+
+And the `chatty` function only needs to call the previous `prepare_input` and send it to the client. We will yield the stream as we obtain the results instead of waiting for the final outcome to be ready:
+
+```python
+def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
+    prompt = prepare_input(message, history)
+
+    partial_message = ""
+    for token_stream in client.text_generation(prompt=prompt, **client_kwargs):
+        partial_message += token_stream
+        yield partial_message
+```
+
+The app is ready! We can test it locally by running `python app.py`, the only requirement is having access to the model deployed in the inference endpoints, in this case we are using Llama 3 70B, but you can choose your own and tweak as needed.
 
 ### Deploy the ChatBot app on Hugging Face Spaces
 
+Now that we have the app working, it's time to share it. You can take a look at this [gradio guide](https://www.gradio.app/guides/sharing-your-app), we are going to host it on Hugging Face Spaces.
+
+You can follow the steps in there, which basically consist on adding a `requirements.txt` file to the repository (take a look to learn more about [spaces dependencies]()), add the `HF_API_TOKEN` (or the name you use for your huggingface token) as a secret ([this guide](https://huggingface.co/docs/hub/spaces-overview#managing-secrets) contains all the relevant information you may need), and uploading the `app.py` file. The space files can be seen [here](https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space/tree/main).
+
+And after the app has been built, we should be able to see our app in the following link (with the corresponding user/space-name you gave to your app):
+
+> https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space
+
 ### Playing around with our ChatBot
+
+There are some cached examples you can use, but for example, we can try asking `What are the Settings in the new SDK?`:
+
+![chatbot img](./assets/blog/assets/argilla-sdk-chatbot/chatbot.png)
+
+Or if it can generate some settings for a dataset like the one we created in the section [An Argilla dataset with triplets to fine tune an embedding model](#an-A:rgilla-dataset-with-triplets-to-fine-tune-an-embedding-model)
+
+![chatbot sentence-embedding](./assets/blog/assets/argilla-sdk-chatbot/chatbot-sentence-embeddings.png)
+
 
 ## Next steps
 
 - Improve the chunking strategy: Explore new chunk strategies, play around with different parameters, chunk sizes, etc...
 - Implement some deduplication/filter pairs in the training dataset.
-
-## References
-
-- [X on Creating a Pipeline for Generating Synthetic Data for Fine-Tuning Custom Embedding Models.](https://x.com/_philschmid/status/1798388387822317933)
-- [fine-tune-embedding-model-for-rag](https://www.philschmid.de/fine-tune-embedding-model-for-rag)
-- [wandbot](https://github.com/wandb/wandbot/tree/main)
