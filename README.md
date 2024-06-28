@@ -16,7 +16,7 @@ The blog is at `argilla-chatbot.md` file. If you think you can add/modify anythi
 
 - [ ] *The dataset should be rebuilt with an updated version of the docs?: [updated docs](https://github.com/argilla-io/argilla/tree/develop/argilla)*
 
-- [ ] Create an argilla instance to store the responses from the chatbot so we can review them later.
+- [x] Create an argilla instance to store the responses from the chatbot so we can review them later.
 
 - [ ] Include references/sources for the responses, so we can give some URL to visit.
 
