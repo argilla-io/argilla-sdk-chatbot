@@ -11,6 +11,8 @@ from huggingface_hub.file_download import hf_hub_download
 from huggingface_hub import InferenceClient, login
 from transformers import AutoTokenizer
 import gradio as gr
+import argilla as rg
+import uuid
 
 
 @dataclass
@@ -32,11 +34,20 @@ class Settings:
         else "cpu"
     )
     MODEL_ID: str = "meta-llama/Meta-Llama-3-70B-Instruct"
+    ARGILLA_URL = r"https://plaguss-argilla-sdk-chatbot.hf.space"
+    ARGILLA_API_KEY = os.getenv("ARGILLA_CHATBOT_API_KEY")
+    ARGILLA_DATASET = "chatbot_interactions"
 
 
 settings = Settings()
 
 login(token=settings.TOKEN)
+
+client_rg = rg.Argilla(
+    api_url=settings.ARGILLA_URL,
+    api_key=settings.ARGILLA_API_KEY
+)
+argilla_dataset = client_rg.datasets(settings.ARGILLA_DATASET)
 
 
 def untar_file(source: Path) -> Path:
@@ -338,6 +349,42 @@ def prepare_input(message: str, history: list[tuple[str, str]]) -> str:
     )[0]
 
 
+def create_chat_html(history: list[tuple[str, str]]) -> str:
+    """Helper function to create a conversation in HTML in argilla.
+
+    Args:
+        history: History of messages with the chatbot.
+
+    Returns:
+        HTML formatted conversation.
+    """
+    chat_html = ""
+    alignments = ["right", "left"]
+    colors = ["#c2e3f7", "#f5f5f5"]
+
+    for turn in history:
+        # Create the HTML message div with inline styles
+        message_html = ""
+
+        # To include message still not answered
+        (user, assistant) = turn
+        if assistant is None:
+            turn = (user, )
+
+        for i, content in enumerate(turn):
+            message_html += f'<div style="display: flex; justify-content: {alignments[i]}; margin: 10px;">'
+            message_html += f'<div style="background-color: {colors[i]}; padding: 10px; border-radius: 10px; max-width: 70%; word-wrap: break-word;">{content}</div>'
+            message_html += "</div>"
+
+        # Add the message to the chat HTML
+        chat_html += message_html
+
+    return chat_html
+
+
+conv_id = str(uuid.uuid4())
+
+
 def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
     """Main function of the app, contains the interaction with the LLM.
 
@@ -351,10 +398,30 @@ def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None,
     """
     prompt = prepare_input(message, history)
 
-    partial_message = ""
+    partial_response = ""
+
     for token_stream in client.text_generation(prompt=prompt, **client_kwargs):
-        partial_message += token_stream
-        yield partial_message
+        partial_response += token_stream
+        yield partial_response
+
+    global conv_id
+    new_conversation = len(history) == 0
+    if new_conversation:
+        conv_id = str(uuid.uuid4())
+    else:
+        history.append((message, None))
+
+    # Register to argilla dataset
+    argilla_dataset.records.log(
+        [
+            {
+                "instruction": create_chat_html(history) if history else message,
+                "response": partial_response,
+                "conv_id": conv_id,
+                "turn": len(history)
+            },
+        ]
+    )
 
 
 if __name__ == "__main__":
@@ -362,7 +429,7 @@ if __name__ == "__main__":
 
     gr.ChatInterface(
         chatty,
-        chatbot=gr.Chatbot(height=600),
+        chatbot=gr.Chatbot(height=700),
         textbox=gr.Textbox(
             placeholder="Ask me about the new argilla SDK", container=False, scale=7
         ),
