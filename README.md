@@ -18,6 +18,8 @@ The blog is at `argilla-chatbot.md` file. If you think you can add/modify anythi
 
 - [ ] Create an argilla instance to store the responses from the chatbot so we can review them later.
 
+- [ ] Include references/sources for the responses, so we can give some URL to visit.
+
 ## Contents
 
 ### `docs_dataset.py`
@@ -98,10 +100,6 @@ To run it locally.
 ```console
 python app/app.py
 ```
-
-TODO:
-- [ ] Deploy to [HF Spaces](https://www.gradio.app/guides/sharing-your-app#hosting-on-hf-spaces). 
-
 
 Needs more guardrails, but some initial examples can be seen already:
 

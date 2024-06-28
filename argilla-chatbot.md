@@ -3,6 +3,7 @@ title: "Creating a chatbot for the new Argilla SDK: leveraging distilabel to fin
 thumbnail: /blog/assets/argilla-sdk-chatbot/chatbot.png
 authors:
 - user: plaguss
+- user: gabrielmbmb
 ---
 
 # Creating a chatbot for the new Argilla SDK: leveraging distilabel to fine tune a custom Embedding model for RAG
@@ -42,8 +43,9 @@ If you prefer, you can skip click the next button.
     - [Downloading and chunking data](#downloading-and-chunking-data)
     - [Generating synthetic data for our embedding model using distilabel](#generating-synthetic-data-for–our-embedding-model-using-distilabel)
     - [Explore the datasets in Argilla](#explore-the-datasets-in-argilla)
-        - [An Argilla dataset with chunks of technical documentation](#an-Argilla-dataset-with-chunks-of-technical-documentation)
-        - [An Argilla dataset with triplets to fine tune an embedding model](#an-Argilla-dataset-with-triplets-to-fine-tune-an-embedding-model)
+        - [An Argilla dataset with chunks of technical documentation](#an-argilla-dataset-with-chunks-of-technical-documentation)
+        - [An Argilla dataset with triplets to fine tune an embedding model](#an-argilla-dataset-with-triplets-to-fine-tune-an-embedding-model)
+        - [An Argilla dataset to track the chatbot conversations](#an-argilla-dataset-to-track-the-chatbot-conversations)
     - [Fine-Tune the embedding model](#fine-tune-the-embedding-model)
         - [Prepare the embedding dataset](#prepare-the-embedding-dataset)
         - [Load the baseline model](#load-the-baseline-model)
@@ -522,6 +524,68 @@ An example can be seen in the following image:
 ![argilla-img-2](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-2.png)
 
 This dataset setting was made to explore the dataset, but we could use prepare it to find wrong examples, improve the questions generated, and iterate on the dataset to be used in the following section.
+
+#### An Argilla dataset to track the chatbot conversations
+
+The last dataset we are going to create will be used to track the interactions with the chatbot. *It may be more interesting to visit this section after you have read the article, once the gradio app is finished.* Let's see the `Settings`:
+
+```python
+settings_chatbot_interactions = rg.Settings(
+    guidelines="Review the user interactions with the chatbot.",
+    fields=[
+        rg.TextField(
+            name="instruction",
+            title="User instruction",
+            use_markdown=True,
+        ),
+        rg.TextField(
+            name="response",
+            title="Bot response",
+            use_markdown=True,
+        ),
+    ],
+    questions=[
+        rg.LabelQuestion(
+            name="is_response_correct",
+            title="Is the response correct?",
+            labels=["yes", "no"],
+        ),
+        rg.LabelQuestion(
+            name="out_of_guardrails",
+            title="Did the model answered something out of the ordinary?",
+            description="If the model answered something unrelated to Argilla SDK",
+            labels=["yes", "no"],
+        ),
+        rg.TextQuestion(
+            name="feedback",
+            title="Let any feedback here",
+            description="This field should be used to report any feedback that can be useful",
+            required=False
+        ),
+    ],
+    metadata=[
+        rg.TermsMetadataProperty(
+            name="conv_id",
+            title="Conversation ID",
+        ),
+        rg.IntegerMetadataProperty(
+            name="turn",
+            min=0,
+            max=100,
+            title="Conversation Turn",
+        )
+    ]
+)
+```
+
+In this dataset we will have 2 fields: one for the `instruction`, that for a single query will be that, but if the conversation is extended, will contain all the conversation up to that point, and the `response` will contain the last message from our chatbot. 3 questions, one to check if the answer is correct, other to determine whether the model answered something unrelated to the task it was meant to do, and an optional field to save any feedback related to the response. And finally, 2 metadata properties that can be use afterwards to filter in the conversation, an ID that will be unique per conversation, and the turn in the given conversation.
+
+An example can be seen in the following image:
+
+![argilla-img-3](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-3.png)
+
+This dataset can be used after some users have interacted with the chatbot to iterate and improve our model.
+
 
 ### Fine-Tune the embedding model
 
@@ -1108,14 +1172,36 @@ You can make use of the chunks of documents in the context to help you generatin
 
 And the `chatty` function only needs to call the previous `prepare_input` and send it to the client. We will yield the stream as we obtain the results instead of waiting for the final outcome to be ready:
 
+And finally the `chatty` function. It prepares the input to be passed to the client, and sends us the stream as it's being generated. Once it finishes, the interaction with the chatbot will be saved so we can review the conversation afterwards and improve the model:
+
 ```python
 def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
     prompt = prepare_input(message, history)
 
-    partial_message = ""
+    partial_response = ""
+
     for token_stream in client.text_generation(prompt=prompt, **client_kwargs):
-        partial_message += token_stream
-        yield partial_message
+        partial_response += token_stream
+        yield partial_response
+
+    global conv_id
+    new_conversation = len(history) == 0
+    if new_conversation:
+        conv_id = str(uuid.uuid4())
+    else:
+        history.append((message, None))
+
+    # Register to argilla dataset
+    argilla_dataset.records.log(
+        [
+            {
+                "instruction": create_chat_html(history) if history else message,
+                "response": partial_response,
+                "conv_id": conv_id,
+                "turn": len(history)
+            },
+        ]
+    )
 ```
 
 The app is ready! We can test it locally by running `python app.py`, the only requirement is having access to the model deployed in the inference endpoints, in this case we are using Llama 3 70B, but you can choose your own and tweak as needed.
@@ -1145,3 +1231,4 @@ Or if it can generate some settings for a dataset like the one we created in the
 
 - Improve the chunking strategy: Explore new chunk strategies, play around with different parameters, chunk sizes, etc...
 - Implement some deduplication/filter pairs in the training dataset.
+- Include sources for the responses, so the user can click and go to the documentation.
