@@ -8,6 +8,7 @@ from distilabel.steps.tasks import GenerateSentencePair
 from distilabel.steps.tasks.base import Task
 from distilabel.steps.tasks.typing import ChatType
 from distilabel.steps import ExpandColumns, CombineKeys
+from distilabel.steps import ExpandColumns, MergeColumns
 
 
 multiply_queries_template = (
@@ -93,10 +94,10 @@ with Pipeline(
         output_mappings={"model_name": "model_name_query_multiplied"},
     )
 
-    combiner = CombineKeys(
-        name="combiner",
-        keys=["positive", "queries"],
-        output_key="positive"
+    merge_columns = MergeColumns(
+        name="merge_columns",
+        columns=["positive", "queries"],
+        output_column="positive"
     )
 
     expand_columns = ExpandColumns(
@@ -107,7 +108,7 @@ with Pipeline(
         load_data
         >> generate_sentence_pair
         >> multiply_queries
-        >> combiner
+        >> merge_columns
         >> expand_columns
     )
 
