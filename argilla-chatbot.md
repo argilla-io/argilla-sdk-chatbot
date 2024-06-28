@@ -4,6 +4,7 @@ thumbnail: /blog/assets/argilla-sdk-chatbot/chatbot.png
 authors:
 - user: plaguss
 - user: gabrielmbmb
+- user: sdiazlor
 ---
 
 # Creating a chatbot for Argilla 2.0: Leveraging distilabel to fine-tune a custom Embedding model for RAG
@@ -14,9 +15,11 @@ authors:
 
 Click the next button to go to the app.
 
-<div class="container">
-    <img src="./assets/blog/assets/argilla-sdk-chatbot/chatbot-intro.png" alt="Snow">
-    <button id="btn">Go to app</button>
+<div class="container2">
+    <img src="./assets/blog/assets/argilla-sdk-chatbot/chatbot.png" alt="Thumbnail">
+    <a href="https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space">
+        <button id="btn">Go to app</button>
+    </a>
     <style>
         #btn {
             position: absolute;
