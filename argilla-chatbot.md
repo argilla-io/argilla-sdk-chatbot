@@ -234,13 +234,13 @@ class MultipleQueries(Task):
 1) `combiner`
 
 The last 2 steps of the pipeline were for processing the data. We want our final dataset to have rows of triplets to be used for fine-tuning, but after generating 
-multiple queries, we have two different columns in our dataset: `positive` and `queries`, which contain the original query (a `str`) and the multiple extra queries (a list of `str`) respectively, that pertain to the same entity. In order to combine them in a single list with all the queries, we will make use of the following step, [`CombineKeys`](https://distilabel.argilla.io/dev/components-gallery/steps/combinekeys/):
+multiple queries, we have two different columns in our dataset: `positive` and `queries`, which contain the original query (a `str`) and the multiple extra queries (a list of `str`) respectively, that pertain to the same entity. In order to combine them in a single list with all the queries, we will make use of the following step, [`MergeColumns`](https://distilabel.argilla.io/dev/components-gallery/steps/mergecolumns/):
 
 ```python
-combiner = CombineKeys(
-    name="combiner",
-    keys=["positive", "queries"],
-    output_key="positive"
+merge_columns = MergeColumns(
+    name="merge_columns",
+    columns=["positive", "queries"],
+    output_column="positive"
 )
 ```
 
@@ -251,8 +251,6 @@ Lastly, we use [`ExpandColumns`](https://distilabel.argilla.io/dev/components-ga
 ```python
 expand_columns = ExpandColumns(columns=["positive"])
 ```
-
-With this last step, we obtain the final [`distiset`](https://huggingface.co/datasets/plaguss/argilla_sdk_docs_queries), which contains close to 1K rows with triplets of `anchor` (the original chunks), `positive` (the synthetic queries, 4 in total per anchor) and `negative` (the irrelevant query, only 1 per anchor, but repeated per query).
 
 Click the dropdown to see the full pipeline definition:
 
@@ -356,10 +354,10 @@ with Pipeline(
         output_mappings={"model_name": "model_name_query_multiplied"},
     )
 
-    combiner = CombineKeys(
-        name="combiner",
-        keys=["positive", "queries"],
-        output_key="positive"
+    merge_columns = MergeColumns(
+        name="merge_columns",
+        columns=["positive", "queries"],
+        output_column="positive"
     )
 
     expand_columns = ExpandColumns(
@@ -370,7 +368,7 @@ with Pipeline(
         load_data
         >> generate_sentence_pair
         >> multiply_queries
-        >> combiner
+        >> merge_columns
         >> expand_columns
     )
 
@@ -415,7 +413,7 @@ import argilla as rg
 
 client = rg.Argilla(
     api_url="https://plaguss-argilla-sdk-chatbot.hf.space",
-    api_key="owner.apikey"
+    api_key="YOUR_API_KEY"
 )
 ```
 
