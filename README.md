@@ -6,11 +6,13 @@ Building a chatbot for Argilla SDK Step by step
 The idea is to document the process and generate a blog post from it, as well as deploying the gradio app to Hugging Face Spaces.
 For the blog we should center around generating the initial dataset to fine tune the embedding model.
 
-Currently working on the blogpost.
-
 The idea is to open a PR once we have it ready at: https://github.com/huggingface/blog.
 
 The blog is at `argilla-chatbot.md` file. If you think you can add/modify anything, please open a PR and add your name in the *authors*. You can take a look on how the blog works [here](https://github.com/huggingface/blog?tab=readme-ov-file#the-hugging-face-blog-repository-).
+
+The app is deployed here:
+
+> https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space
 
 ## TODO
 
