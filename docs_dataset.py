@@ -12,6 +12,11 @@ $ python docs_dataset.py \
     "argilla-io/argilla-python" \
     "argilla-io/distilabel" \
     --dataset-name "plaguss/argilla_sdk_docs_raw_unstructured"
+
+$ python docs_dataset.py \
+    "argilla-io/argilla" \
+    --docs_folder "argilla/docs" \
+    --dataset-name "plaguss/argilla_sdk_docs_raw_dev"
 """
 
 import pandas as pd
