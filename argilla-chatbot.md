@@ -11,7 +11,8 @@ authors:
 
 ## TL;DR
 
-<!--**Summary/motivation goes here**.-->
+Discover how to build a ChatBot for Argilla 2.0 SDK (or your tool of choice!) that can understand technical documentation and converse with users. In this article, we'll show you how to leverage distilabel and fine-tune a custom embedding model to create a conversational AI that's both accurate and engaging.
+
 
 Click the next button to go to the app.
 
