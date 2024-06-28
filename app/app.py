@@ -386,7 +386,8 @@ conv_id = str(uuid.uuid4())
 
 
 def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
-    """Main function of the app, contains the interaction with the LLM.
+    """Main function of the app, contains the interaction with the LLM, and tracks
+    the conversation in an argilla dataset.
 
     Args:
         message: Message from the user, the query.
