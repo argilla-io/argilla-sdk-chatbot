@@ -3,6 +3,7 @@ title: "Creating a chatbot for the new Argilla SDK: leveraging distilabel to fin
 thumbnail: /blog/assets/argilla-sdk-chatbot/chatbot.png
 authors:
 - user: plaguss
+- user: gabrielmbmb
 ---
 
 # Creating a chatbot for the new Argilla SDK: leveraging distilabel to fine tune a custom Embedding model for RAG
