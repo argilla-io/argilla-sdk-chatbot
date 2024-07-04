@@ -18,7 +18,9 @@ The app is deployed here:
 
 - [ ] *The dataset should be rebuilt with an updated version of the docs?: [updated docs](https://github.com/argilla-io/argilla/tree/develop/argilla)*
 
-- [x] Create an argilla instance to store the responses from the chatbot so we can review them later.
+- [ ] Update code to use `client.chat_completion`, for reference: https://github.com/argilla-io/distilabel/issues/772.
+
+## Next steps
 
 - [ ] Include references/sources for the responses, so we can give some URL to visit.
 
