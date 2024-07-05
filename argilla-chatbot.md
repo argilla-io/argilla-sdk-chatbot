@@ -14,34 +14,12 @@ authors:
 
 Discover how to build a Chatbot for a tool of your choice (Argilla 2.0 SDK in this case) that can understand technical documentation and chat with users about it. In this article, we'll show you how to leverage `distilabel` and fine-tune a custom embedding model to create a conversational model that's both accurate and engaging. 
 
-<!--TODO: Consider adding an image or a 2-3 sentence explanation of what is going to happen (setup -->
+This article outlines the process of creating a Chatbot for Argilla 2.0. We will create a synthetic dataset from the technical documentation to fine-tune a custom embedding model, create a vector database to store and retrieve the documentation and deploy the final Chatbot to a Hugging Face Space allowing users to interact with it, storing the interactions in Argilla for continuous improvement.
 
 Click the next image to go to the app.
 
-<div class="container2">
-    <img src="./assets/blog/assets/argilla-sdk-chatbot/chatbot.png" alt="Thumbnail">
-    <a href="https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space">
-        <button id="btn">Go to app</button>
-    </a>
-    <style>
-        #btn {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            -ms-transform: translate(-50%, -50%);
-            background-color: #4CAF50;
-            color: white;
-            font-size: 16px;
-            padding: 12px 24px;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
-            width: 30%;
-            height: auto;
-        }
-    </style>
-</div>
+<a href="https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space" rel="some text">![argilla-sdk-chatbot](./assets/blog/assets/argilla-sdk-chatbot/chatbot.png)</a>
+
 
 ## Table of Contents
 
