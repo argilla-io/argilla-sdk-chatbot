@@ -53,18 +53,17 @@ Click the next image to go to the app.
 
 ## Generating Synthetic Data for Fine-Tuning Custom Embedding Models
 
-<!--TODO: Mention here the X message from PhilSchmid and blog on generating synthetic data-->
+Need a quick recap on RAG? Brush up on the basics with this handy [intro notebook](https://huggingface.co/learn/cookbook/en/rag_zephyr_langchain#simple-rag-for-github-issues-using-hugging-face-zephyr-and-langchain). We'll wait for you to get up to speed!
 
 ### Downloading and chunking data
 
 Chunking data means dividing your text data into manageable chunks of approximately 256 tokens each (chunk size used in RAG later).
 
-<!--TODO: Maybe don't assume people know what RAG is here, not 100% sure -->
+Let's dive into the first step: processing the documentation of your target repository. To simplify this task, you can leverage libraries like [llama-index](https://docs.llamaindex.ai/en/stable/examples/data_connectors/GithubRepositoryReaderDemo/) to read the repository contents and parse the markdown files. Specifically, langchain offers useful tools like [MarkdownTextSplitter](https://python.langchain.com/v0.1/docs/modules/data_connection/document_transformers/markdown_header_metadata/) and `llama-index` provides [MarkdownNodeParser](https://docs.llamaindex.ai/en/stable/module_guides/loading/node_parsers/modules/?h=markdown#markdownnodeparser) to help you extract the necessary information. If you prefer a more streamlined approach, consider using the [corpus-creator](https://huggingface.co/spaces/davanstrien/corpus-creator) app from [`davanstrien`](https://huggingface.co/davanstrien).
 
-The first step consists of processing the documentation of your target repository. You can use some libraries out of the box to read the contents of a repository, such as [llama-index](https://docs.llamaindex.ai/en/stable/examples/data_connectors/GithubRepositoryReaderDemo/), and parse the markdown content (e.g., langchain provides [MarkdownTextSplitter](https://python.langchain.com/v0.1/docs/modules/data_connection/document_transformers/markdown_header_metadata/) and `llama-index`, [MarkdownNodeParser](https://docs.llamaindex.ai/en/stable/module_guides/loading/node_parsers/modules/?h=markdown#markdownnodeparser)). If you just want everything abstracted in an interface, try this cool [corpus-creator](https://huggingface.co/spaces/davanstrien/corpus-creator) app from [`davanstrien`](https://huggingface.co/davanstrien).
+To make things easier and more efficient, we've developed a custom Python script that does the heavy lifting for you. You can find it in our repository [here](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/docs_dataset.py).
 
-To simplify the process with a lower degree of abstraction, we've created a custom Python script, that can be found in the repository [here](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/docs_dataset.py). This script will retrieve the documentation from a GitHub repository and store the dataset on the Hugging Face Hub. Let's see how to use it:
-
+This script automates the process of retrieving documentation from a GitHub repository and storing it as a dataset on the Hugging Face Hub. And the best part? It's incredibly easy to use! Let's see how we can run it:
 
 ```bash
 python docs_dataset.py \
@@ -72,10 +71,29 @@ python docs_dataset.py \
     --dataset-name "plaguss/argilla_sdk_docs_raw_unstructured"
 ```
 
-There are some additional arguments you can use, but the required ones are the GitHub path to the repository where the docs are located and the dataset ID for the Hugging Face Hub. The script will download the docs (located at `/docs` by default, but it can be changed as shown in the following snippet) to your local directory, extract all the markdown files, chunk them, and push the dataset to the Hugging Face Hub. The core logic can be summarized by the following snippet:
+<!-- There are some additional arguments you can use, but the required ones are the GitHub path to the repository where the docs are located and the dataset ID for the Hugging Face Hub. The script will download the docs (located at `/docs` by default, but it can be changed as shown in the following snippet) to your local directory, extract all the markdown files, chunk them, and push the dataset to the Hugging Face Hub. The core logic can be summarized by the following snippet: -->
+
+While the script is easy to use, you can further tailor it to your needs by utilizing additional arguments. However, there are two essential inputs you'll need to provide:
+
+- The GitHub path to the repository where your documentation is stored
+
+- The dataset ID for the Hugging Face Hub, where your dataset will be stored
+
+Once you've provided these required arguments, the script will take care of the rest. Here's what happens behind the scenes:
+
+- The script downloads the documentation from the specified GitHub repository to your local directory. By default, it looks for docs in the `/docs` directory by default, but you can change this by specifying a different path.
+
+- It extracts all the markdown files from the downloaded documentation.
+
+- Chunks the extracted markdown files into manageable pieces.
+
+- Finally, it pushes the prepared dataset to the Hugging Face Hub, making it ready for use.
+
+To give you a better understanding of the script's inner workings, here's a code snippet that summarizes the core logic:
 
 ```python
-# TODO: add needed imports if possible
+# The function definitions are omitted for brevity, visit the script for more info!
+from github import Github
 
 gh = Github()
 repo = gh.get_repo("repo_name")
@@ -93,12 +111,29 @@ data = create_chunks(md_files)
 create_dataset(data, repo_name="name/of/the/dataset")
 ```
 
-The script includes short functions to download the documentation, create chunks from the markdown files, and create the dataset. Including more functionalities or implementing a more complex chunking strategy should be simple to explore, as the script can be updated easily.
+The script includes short functions to download the documentation, create chunks from the markdown files, and create the dataset. Including more functionalities or implementing a more complex chunking strategy should be straightforward.
 
 Take a look at the remaining arguments that can be tweaked by calling the help message:
 
-```console
-python docs_dataset.py -h
+```bash
+$ python docs_dataset.py -h
+usage: docs_dataset.py [-h] [--dataset-name DATASET_NAME] [--docs_folder DOCS_FOLDER] [--output_dir OUTPUT_DIR] [--private | --no-private] repo [repo ...]
+
+Download the docs from a github repository and generate a dataset from the markdown files. The dataset will be pushed to the hub.
+
+positional arguments:
+  repo                  Name of the repository in the hub. For example 'argilla-io/argilla-python'.
+
+options:
+  -h, --help            show this help message and exit
+  --dataset-name DATASET_NAME
+                        Name to give to the new dataset. For example 'my-name/argilla_sdk_docs_raw'.
+  --docs_folder DOCS_FOLDER
+                        Name of the docs folder in the repo, defaults to 'docs'.
+  --output_dir OUTPUT_DIR
+                        Path to save the downloaded files from the repo (optional)
+  --private, --no-private
+                        Whether to keep the repository private or not. Defaults to False.
 ```
 
 ### Generating synthetic data for our embedding model using distilabel
