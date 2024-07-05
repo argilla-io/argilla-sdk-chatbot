@@ -5,6 +5,7 @@ authors:
 - user: plaguss
 - user: gabrielmbmb
 - user: sdiazlor
+- user: osanseviero
 ---
 
 # Creating a chatbot for Argilla 2.0: Leveraging distilabel to fine-tune a custom Embedding model for RAG
