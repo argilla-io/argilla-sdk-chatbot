@@ -113,7 +113,10 @@ create_dataset(data, repo_name="name/of/the/dataset")
 
 The script includes short functions to download the documentation, create chunks from the markdown files, and create the dataset. Including more functionalities or implementing a more complex chunking strategy should be straightforward.
 
-Take a look at the remaining arguments that can be tweaked by calling the help message:
+You can take a look at the available arguments:
+
+<details close>
+<summary>Click to see docs_dataset.py help message</summary>
 
 ```bash
 $ python docs_dataset.py -h
@@ -136,15 +139,18 @@ options:
                         Whether to keep the repository private or not. Defaults to False.
 ```
 
+</details>
+
+
 ### Generating synthetic data for our embedding model using distilabel
 
-We will generate synthetic questions from our documentation that can be answered by every chunk of documentation. We will also generate hard negative examples by generating <!--TODO: complete --->. We can use the questions, hard negatives, and docs to build the triples for the fine-tuning dataset.
+We will generate synthetic questions from our documentation that can be answered by every chunk of documentation. We will also generate hard negative examples by generating unrelated questions that can be easily distinguishable. We can use the questions, hard negatives, and docs to build the triples for the fine-tuning dataset.
 
 The full pipeline script can be seen at [`pipeline_docs_queries.py`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/pipeline_docs_queries.py) in the reference repository, but let's go over the different steps:
 
 1. `load_data`:
 
-Start by downloading the dataset that contains the documentation chunks. In this case, the column with the different chunks is named `chunks`, and it is the one we want to use as an `anchor`. For that, we will use the `output_mappings` to change the name of the column `chunks -> anchor` so the next step gets the expected input:  <!--Maybe clarify here why we need to rename to anchor --->
+The first step in our journey is to acquire the dataset that houses the valuable documentation chunks. Upon closer inspection, we notice that the column containing these chunks is aptly named `chunks`. However, for our model to function seamlessly, we need to assign a new identity to this column. Specifically, we want to rename it to `anchor`, as this is the input our subsequent steps will be expecting. We'll make use of `output_mappings` to do this column transformation for us:
 
 ```python
 load_data = LoadDataFromHub(
@@ -157,7 +163,9 @@ load_data = LoadDataFromHub(
 
 2. `generate_sentence_pair`
 
-The next step is the most interesting. We will use [`GenerateSentencePair`](https://distilabel.argilla.io/latest/components-gallery/tasks/generatesentencepair/) to generate synthetic queries from our documentation pieces. You can take a look at the documentation to see the possibilities this `Task` offers us, but let's go over the case at hand:
+Now, we arrive at the most fascinating part of our process, transforming the documentation pieces into synthetic queries. This is where the [`GenerateSentencePair`](https://distilabel.argilla.io/latest/components-gallery/tasks/generatesentencepair/) task takes center stage. This powerful task offers a wide range of possibilities for generating high-quality sentence pairs. We encourage you to explore its documentation to unlock its full potential.
+
+In our specific use case, we'll harness the capabilities of [`GenerateSentencePair`](https://distilabel.argilla.io/latest/components-gallery/tasks/generatesentencepair/) to craft synthetic queries that will ultimately enhance our model's performance. Let's dive deeper into how we'll configure this task to achieve our goals.
 
 ```python
 llm = InferenceEndpointsLLM(
@@ -176,11 +184,24 @@ generate_sentence_pair = GenerateSentencePair(
 )
 ```
 
-This task will generate a series of triplets (`triplet=True`), that is, a set of (`anchor-positive-negative`) rows, a format that can be directly used for fine-tuning (take a look at [training overview](https://www.sbert.net/docs/sentence_transformer/training_overview.html) in Sentence Transformers library for more information on the available formats). By using `action="query"`, we request the `LLM` that generates queries for the `positive` sentences. The `context` argument helps the model when the given `anchor` doesn't contain a lot of information on itself, as can be the case with some of the chunks of documentation we obtained. For the `LLM`, we choose to use the `meta-llama/Meta-Llama-3-70B-Instruct` model via [`InferenceEndpointsLLM`](https://distilabel.argilla.io/latest/components-gallery/llms/inferenceendpointsllm/).
+Let's break down the code snippet above.
+
+By setting `triplet=True`, we're instructing the task to produce a series of triplets, comprising an anchor, a positive sentence, and a negative sentence. This format is perfectly suited for fine-tuning, as explained in the Sentence Transformers library's [training overview](https://www.sbert.net/docs/sentence_transformer/training_overview.html).
+
+The `action="query"` parameter is a crucial aspect of this task, as it directs the LLM to generate queries for the positive sentences. This is where the magic happens, and our documentation chunks are transformed into meaningful queries.
+
+To further assist the model, we've included the `context` argument. This provides additional information to the LLM when the anchor sentence lacks sufficient context, which is often the case with brief documentation chunks.
+
+Finally, we've chosen to harness the power of the `meta-llama/Meta-Llama-3-70B-Instruct` model, via the [`InferenceEndpointsLLM`](https://distilabel.argilla.io/latest/components-gallery/llms/inferenceendpointsllm/) component. This selection enables us to tap into the model's capabilities, generating high-quality synthetic queries that will ultimately enhance our model's performance.
+
 
 3. `multiply_queries`
 
-Using the `GenerateSentencePair` step, we obtained as many examples for training as chunks we had, 251 in this case, which can be a small number to fine-tune a custom model. In order to have a bigger dataset, we can leverage another `LLM` to generate more queries. This is the target of the following `Task`, the only custom task we had to define for this pipeline:
+Using the `GenerateSentencePair` step, we obtained as many examples for training as chunks we had, 251 in this case. However, we recognize that this might not be sufficient to fine-tune a custom model that can accurately capture the nuances of our specific use case.
+
+To overcome this limitation, we'll employ another LLM to generate additional queries. This will allow us to increase the size of our training dataset, providing our model with a richer foundation for learning.
+
+This brings us to the next step in our pipeline: `MultipleQueries`, a custom `Task` that we've crafted to further augment our dataset.
 
 ```python
 multiply_queries = MultipleQueries(
@@ -198,9 +219,11 @@ multiply_queries = MultipleQueries(
 )
 ```
 
-The most relevant parameter is `num_queries`, here set to 3 (which means we will generate 3 extra "positive" queries), so se would have approximately *4x* the number of examples, taking into account some examples can fail. Other than that, we use the `system_prompt` to guide the `LLM` to adhere to our instructions. The model chosen is strong, and the examples were simple enough, so we didn't need to use structured generation, but this can be a good use case.
+Now, let's delve into the configuration of our custom `Task`, designed to amplify our training dataset. The linchpin of this task is the `num_queries` parameter, set to 3 in this instance. This means we'll generate three additional "positive" queries for each example, effectively quadrupling our dataset size, assuming some examples may not succeed.
 
-In case you want to see the definition of the full `Task`, open the following dropdown to see how it's defined:
+To ensure the Large Language Model (LLM) stays on track, we've crafted a system_prompt that provides clear guidance on our instructions. Given the strength of the chosen model and the simplicity of our examples, we didn't need to employ structured generation techniques. However, this could be a valuable approach in more complex scenarios.
+
+Curious about the inner workings of our custom `Task`? Click the dropdown below to explore the full definition:
 
 <details close>
 <summary>MultipleQueries definition</summary>
@@ -252,10 +275,11 @@ class MultipleQueries(Task):
 
 </details><p>
 
-1) `combiner`
+4) `merge_columns`
 
-The last 2 steps of the pipeline are for processing the data. We want our final dataset to have rows of triplets to be used for fine-tuning, but after generating 
-multiple queries, we have two different columns in our dataset: `positive` and `queries`, which contain the original query (an `str`) and the multiple extra queries (a list of `str`) respectively, that pertain to the same entity. In order to combine them in a single list with all the queries, we will make use of the following step, [`MergeColumns`](https://distilabel.argilla.io/dev/components-gallery/steps/mergecolumns/):
+As we approach the final stages of our pipeline, our focus shifts to data processing. Our ultimate goal is to create a refined dataset, comprising rows of triplets suited for fine-tuning. However, after generating multiple queries, our dataset now contains two distinct columns: `positive` and `queries`. The `positive` column holds the original query as a single string, while the `queries` column stores a list of strings, representing the additional queries generated for the same entity.
+
+To merge these two columns into a single, cohesive list, we'll employ the [`MergeColumns`](https://distilabel.argilla.io/dev/components-gallery/steps/mergecolumns/) step. This will enable us to combine the original query with the generated queries, creating a unified:
 
 ```python
 merge_columns = MergeColumns(
@@ -267,7 +291,7 @@ merge_columns = MergeColumns(
 
 5) `expand_columns`
 
-Lastly, we use [`ExpandColumns`](https://distilabel.argilla.io/dev/components-gallery/steps/expandcolumns/) to move the previous column of positive to different lines, repeating the `anchor` and `negative` columns in the process:
+Lastly, we use [`ExpandColumns`](https://distilabel.argilla.io/dev/components-gallery/steps/expandcolumns/) to move the previous column of positive to different lines. As a result, each `positive` query will occupy a separate line, while the `anchor` and `negative` columns will be replicated to match the expanded positive queries. This data manipulation will yield a dataset with the ideal structure for fine-tuning:
 
 ```python
 expand_columns = ExpandColumns(columns=["positive"])
@@ -425,9 +449,10 @@ if __name__ == "__main__":
 
 ### Explore the datasets in Argilla
 
-It's time to use Argilla to explore the datasets we have generated and iterate on them as needed. You can follow the [argilla_datasets.ipynb](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/argilla_datasets.ipynb) notebook to see how to upload the datasets to Argilla.
+Now that we've generated our datasets, it's time to dive deeper and refine them as needed using Argilla. To get started, take a look at our [argilla_datasets.ipynb](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/argilla_datasets.ipynb) notebook, which provides a step-by-step guide on how to upload your datasets to Argilla.
 
-If you don't have an Argilla instance running, you can follow the guide from the [docs](https://argilla-io.github.io/argilla/latest/getting_started/quickstart/#run-the-argilla-server) and just create a Hugging Face Space with Argilla. Once you have the Space up and running, you can easily connect to it (update the `api_url` to point to your Space):
+If you haven't set up an Argilla instance yet, don't worry! Follow our easy-to-follow guide in the [docs](https://argilla-io.github.io/argilla/latest/getting_started/quickstart/#run-the-argilla-server) to create a Hugging Face Space with Argilla. Once you've got your Space up and running, simply connect to it by updating the `api_url` to point to your Space:
+
 
 ```python
 import argilla as rg
@@ -440,7 +465,7 @@ client = rg.Argilla(
 
 #### An Argilla dataset with chunks of technical documentation
 
-Once we are connected, we will create the `Settings` for our dataset. These `Settings` should work for your use case without changes:
+With your Argilla instance up and running, let's move on to the next step: configuring the `Settings` for your dataset. The good news is that the default `Settings` we'll create should work seamlessly for your specific use case, with no need for further adjustments:
 
 ```python
 settings = rg.Settings(
@@ -467,7 +492,7 @@ settings = rg.Settings(
 )
 ```
 
-We will explore the filename that was parsed and the chunks generated by our program, hence the `filename` and `chunk` fields. We can also define a simple label question (`good_chunk`) to label the chunks as useful or not and improve on the automated generation. And that's it, we can create the dataset:
+Let's take a closer look at the dataset structure we've created. We'll examine the `filename` and `chunk` fields, which contain the parsed filename and the generated chunks, respectively. To further enhance our dataset, we can define a simple label question, `good_chunk`, which allows us to manually label each chunk as useful or not. This human-in-the-loop approach enables us to refine our automated generation process. With these essential elements in place, we're now ready to create our dataset:
 
 ```python
 dataset = rg.Dataset(
@@ -478,7 +503,7 @@ dataset = rg.Dataset(
 dataset.create()
 ```
 
-Let's grab the dataset from the Hugging Face Hub. Download the dataset created at the [chunking data section](#downloading-and-chunking-data), which in our case corresponds to the following dataset, and filter the columns we need:
+Now, let's retrieve the dataset we created earlier from the Hugging Face Hub. Recall the dataset we generated in the [chunking data section](#downloading-and-chunking-data)? We'll download that dataset and extract the essential columns we need to move forward:
 
 ```python
 from datasets import load_dataset
@@ -490,7 +515,7 @@ data = (
 )
 ```
 
-And we are ready for the last step! Log the records to see them in the Argilla screen:
+We've reached the final milestone! To bring everything together, let's log the records to Argilla. This will allow us to visualize our dataset in the Argilla interface, providing a clear and intuitive way to explore and interact with our data:
 
 ```python
 dataset.records.log(records=data, mapping={"filename": "filename", "chunks": "chunk"})
@@ -502,7 +527,8 @@ These are the kind of examples you could expect to see:
 
 #### An Argilla dataset with triplets to fine-tune an embedding model
 
-Now, we can repeat the process with the dataset ready for fine-tuning we generated in the [previous section](#generating-synthetic-data-for–our-embedding-model:-distilabel-to-the-rescue). We will show just the new settings for this dataset. We only need to download the corresponding dataset and push it with its corresponding name. The jupyter notebook contains all the details:
+Now, we can repeat the process with the dataset ready for fine-tuning we generated in the [previous section](#generating-synthetic-data-for–our-embedding-model:-distilabel-to-the-rescue). 
+Fortunately, the process is straightforward: simply download the relevant dataset and upload it to Argilla with its designated name. For a detailed walkthrough, refer to the Jupyter notebook, which contains all the necessary instructions:
 
 ```python
 settings = rg.Settings(
@@ -539,17 +565,17 @@ settings = rg.Settings(
 )
 ```
 
-In this case, we have three `TextFields`: the `anchor`, `positive`, and `negative`, which correspond to the chunk of text, a query that could be answered using the chunk as a reference, and an (un)related query that works as a negative in the triplet, respectively. The two questions can be used to discriminate these `positive/negative` examples.
+Let's take a closer look at the structure of our dataset, which consists of three essential [`TextFields`](https://argilla-io.github.io/argilla/latest/reference/argilla/settings/fields/?h=textfield): `anchor`, `positive`, and `negative`. The `anchor` field represents the chunk of text itself, while the `positive` field contains a query that can be answered using the anchor text as a reference. In contrast, the `negative` field holds an unrelated query that serves as a negative example in the triplet. The positive and negative questions play a crucial role in helping our model distinguish between these examples and learn effective embeddings.
 
 An example can be seen in the following image:
 
 ![argilla-img-2](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-2.png)
 
-These dataset settings were made to explore the dataset, but we could customize them to find wrong examples, improve the questions generated, and iterate on the dataset to be used in the following section.
+The dataset settings we've established so far have been focused on exploring our dataset, but we can take it a step further. By customizing these settings, we can identify and correct incorrect examples, refine the quality of generated questions, and iteratively improve our dataset to better suit our needs.
 
 #### An Argilla dataset to track the chatbot conversations
 
-The last dataset we are going to create will be used to track the interactions with the chatbot. *It may be more interesting to visit this section after you have read the article, once the gradio app is finished.* Let's see the `Settings`:
+Now, let's create our final dataset, which will be dedicated to tracking user interactions with our chatbot. *Note*: You may want to revisit this section after completing the Gradio app, as it will provide a more comprehensive understanding of the context. For now, let's take a look at the `Settings` for this dataset:
 
 ```python
 settings_chatbot_interactions = rg.Settings(
@@ -600,28 +626,29 @@ settings_chatbot_interactions = rg.Settings(
 )
 ```
 
-In this dataset, we will have 2 fields: one for the `instruction`, that for a single query will be that, but if the conversation is extended, will contain all the conversation up to that point, and the `response` will contain the last message from our chatbot. 3 questions: one to check if the answer is correct, another to determine whether the model answered something unrelated to the task it was meant to do, and an optional field to save any feedback related to the response. Finally, 2 metadata properties can be used afterward to filter in the conversation: an ID that will be unique per conversation and the turn in the given conversation.
+In this dataset, we'll define two essential fields: `instruction` and `response`. The `instruction` field will store the initial query, and if the conversation is extended, it will contain the entire conversation history up to that point. The `response` field, on the other hand, will hold the chatbot's most recent response. To facilitate evaluation and feedback, we'll include three questions: one to assess the correctness of the response, another to determine if the model strayed off-topic, and an optional field for users to provide feedback on the response. Additionally, we'll include two metadata properties to enable filtering and analysis of the conversations: a unique conversation ID and the turn number within the conversation.
 
 An example can be seen in the following image:
 
 ![argilla-img-3](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-3.png)
 
-This dataset can be used after some users have interacted with the chatbot to iterate and improve our model.
-
+Once our chatbot has garnered significant user engagement, this dataset can serve as a valuable resource to refine and enhance our model, allowing us to iterate and improve its performance based on real-world interactions.
 
 ### Fine-Tune the embedding model
 
-The dataset to fine-tune our custom embedding model is ready. Let's see how to train our model.
+Now that our custom embedding model dataset is prepared, it's time to dive into the training process.
 
-We will go over the following notebook: [`train_embedding.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/train_embedding.ipynb), which is highly inspired by Philipp Schmid's nice [blog post](https://www.philschmid.de/fine-tune-embedding-model-for-rag).
+To guide us through this step, we'll be referencing the [`train_embedding.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/train_embedding.ipynb) notebook, which draws inspiration from Philipp Schmid's [blog post](https://www.philschmid.de/fine-tune-embedding-model-for-rag) on fine-tuning embedding models for RAG. While the blog post provides a comprehensive overview of the process, we'll focus on the key differences and nuances specific to our use case.
 
-That blog post provides an overview of the process, so we will only discuss the differences in our case. Please read the blog post for more information on the decisions and review the notebook for all the details.
+For a deeper understanding of the underlying decisions and a detailed walkthrough, be sure to check out the original blog post and review the notebook for a step-by-step explanation.
 
 #### Prepare the embedding dataset
 
-We start by downloading the dataset, selecting the relevant columns (already with the names expected by `Sentence Transformers`), adding an `id` column, and splitting them into 90/10 for training/testing. After that, the dataset is formatted as a JSON to be read again by the trainer:
+We'll begin by downloading the dataset and selecting the essential columns, which conveniently already align with the naming conventions expected by Sentence Transformers. Next, we'll add a unique id column to each sample and split the dataset into training and testing sets, allocating 90% for training and 10% for testing. Finally, we'll convert the formatted dataset into a JSON file, ready to be fed into the trainer for model fine-tuning:
 
 ```python
+from datasets import load_dataset
+
 # Load dataset from the hub
 dataset = (
     load_dataset("plaguss/argilla_sdk_docs_queries", split="train")
@@ -637,7 +664,7 @@ dataset["test"].to_json("test_dataset.json", orient="records")
 
 #### Load the baseline model
 
-Once we have prepared the dataset, we can load the baseline model, which will be the same one used in the reference blog:
+With our dataset in place, we can now load the baseline model that will serve as the foundation for our fine-tuning process. We'll be using the same model employed in the reference blog post, ensuring a consistent starting point for our custom embedding model development:
 
 ```python
 from sentence_transformers import SentenceTransformerModelCardData, SentenceTransformer
@@ -654,7 +681,7 @@ model = SentenceTransformer(
 
 #### Define the loss function
 
-Based on our dataset format, we are going to use the `TripletLoss` instead of the `MultipleNegativesRankingLoss` to make use of our `(anchor-positive-negative)` triplets, in combination with the `MatryoshkaLoss` (find more information on this type of loss in [this article](https://huggingface.co/blog/matryoshka)):
+Given the structure of our dataset, we'll leverage the `TripletLoss` function, which is better suited to handle our `(anchor-positive-negative)` triplets. Additionally, we'll combine it with the `MatryoshkaLoss`, a powerful loss function that has shown promising results (for a deeper dive into `MatryoshkaLoss`, check out [this article](https://huggingface.co/blog/matryoshka)):
 
 ```python
 from sentence_transformers.losses import MatryoshkaLoss, TripletLoss
@@ -667,7 +694,9 @@ train_loss = MatryoshkaLoss(
 
 #### Define the training strategy
 
-With the baseline model and the loss ready, let's define the training arguments. This model was fine-tuned in an `Apple M2 Pro`, and there's a slight modification that must be made. Other than setting a smaller `per_device_train_batch_size` and `per_device_eval_batch_size` due to the small amount of resources with respect to the original blog post, we have to remove the `tf32` and `bf16` precision as these aren't supported, as well as the optimizer `adamw_torch_fused` (this optimizer can also be used in a Google Colab notebook, and the training can be done decently fast there too):
+Now that we have our baseline model and loss function in place, it's time to define the training arguments that will guide the fine-tuning process. Since this work was done on an Apple M2 Pro, we need to make some adjustments to ensure a smooth training experience.
+
+To accommodate the limited resources of our machine, we'll reduce the `per_device_train_batch_size` and `per_device_eval_batch_size` compared to the original blog post. Additionally, we'll need to remove the `tf32` and `bf16` precision options, as they're not supported on this device. Furthermore, we'll swap out the `adamw_torch_fused` optimizer, which can be used in a Google Colab notebook for faster training. By making these modifications, we'll be able to fine-tune our model:
 
 ```python
 from sentence_transformers import SentenceTransformerTrainingArguments
@@ -716,17 +745,17 @@ trainer.save_model()
 trainer.model.push_to_hub("bge-base-argilla-sdk-matryoshka")
 ```
 
-And that's it! We can take a look at the new model: [plaguss/bge-base-argilla-sdk-matryoshka](https://huggingface.co/plaguss/bge-base-argilla-sdk-matryoshka). The dataset card contains a lot of useful information!
+And that's it! We can take a look at the new model: [plaguss/bge-base-argilla-sdk-matryoshka](https://huggingface.co/plaguss/bge-base-argilla-sdk-matryoshka). Take a closer look at the dataset card, which is packed with valuable insights and information about our model.
 
-We will see the model in action in the following section. Stay with us!
+But that's not all! In the next section, we'll put our model to the test and see it in action.
 
 ## The vector database
 
-In the previous sections, we created a dataset and fine-tuned a model for our Retrieval Augmented Generation chatbot; now, it's time to build a vector database that will enable our chatbot to store and retrieve relevant information.
+We've made significant progress so far, creating a dataset and fine-tuning a model for our RAG chatbot. Now, it's time to construct the vector database that will empower our chatbot to store and retrieve relevant information efficiently.
 
-There are lots of alternatives for this component, but to keep it simple, we decided to use [lancedb](https://lancedb.github.io/lancedb/), an embedded database that doesn't need any server, similar to SQLite. As we will see, it's quite easy to create a simple file to store our embeddings and move it around, and fast enough to retrieve the data for our use case.
+When it comes to choosing a vector database, there are numerous alternatives available. To keep things simple and straightforward, we'll be using [lancedb](https://lancedb.github.io/lancedb/), a lightweight, embedded database that doesn't require a server, similar to SQLite. As we'll see, lancedb allows us to create a simple file to store our embeddings, making it easy to move around and retrieve data quickly, which is perfect for our use case.
 
-This section will make use of the following notebook: [`vector_db.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/vector_db.ipynb).
+To follow along, please refer to the accompanying notebook: [`vector_db.ipynb`](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/vector_db.ipynb). In this notebook, we'll delve into the details of building and utilizing our vector database.
 
 ### Connect to the database
 
@@ -739,11 +768,11 @@ import lancedb
 db = lancedb.connect("./lancedb")
 ```
 
-We should see a folder in our current working directory.
+As we execute the code, a new folder should materialize in our current working directory, signaling the successful creation of our vector database.
 
 #### Instantiate the fine-tuned model
 
-Let's load our fine-tuned model using `sentence-transformers` registry:
+Now that our vector database is set up, it's time to load our fine-tuned model. We'll utilize the `sentence-transformers` registry to load the model, unlocking its capabilities and preparing it for action:
 
 ```python
 import torch
@@ -757,7 +786,7 @@ model = get_registry().get("sentence-transformers").create(name=model_name, devi
 
 ### Create the table with the documentation chunks
 
-The next step consists of creating the table. To define the Schema for the table, we will use a `LanceModel` much like a `pydantic.BaseModel` to create our `Docs` representation: 
+With our fine-tuned model loaded, we're ready to create the table that will store our embeddings. To define the schema for this table, we'll employ a `LanceModel`, similar to `pydantic.BaseModel`, to create a robust representation of our `Docs` entity.
 
 ```python
 from lancedb.pydantic import LanceModel, Vector
@@ -771,11 +800,19 @@ table_name = "docs"
 table = db.create_table(table_name, schema=Docs)
 ```
 
-The previous snippet will create a table with 3 columns: one for the synthetic query (`query`), one that we will name `text` containing the chunk from the documentation, and a `vector`, which will have associated the dimension from our model. After running the step, we can interact with the table.
+The previous code snippet sets the stage for creating a table with three essential columns:
+
+- `query`: dedicated to storing the synthetic query
+
+- `text`: housing the chunked documentation text
+
+- `vector`: associated with the dimension from our fine-tuned model, ready to store the embeddings
+
+With this table structure in place, we can now interact with the table.
 
 #### Populate the table
 
-We already have our table in place. Let's load the last dataset with the queries and ingest them into our database:
+With our table structure established, we're now ready to populate it with data. Let's load the final dataset, which contains the queries, and ingest them into our database, accompanied by their corresponding embeddings. This crucial step will bring our vector database to life, enabling our chatbot to store and retrieve relevant information efficiently:
 
 ```python
 ds = load_dataset("plaguss/argilla_sdk_docs_queries", split="train")
@@ -787,9 +824,9 @@ for batch in tqdm.tqdm(ds.iter(batch_size), total=len(ds) // batch_size):
     table.add(df)
 ```
 
-In the previous snippet, we iterate over the dataset in batches, generate embeddings from our `positive` column (the synthetic queries), and create a dataframe to be added to the table with the columns `query`, `text`, and `vector`. The dataframe contains the `positive` and `anchor` columns plus the newly generated embeddings, respectively.
+In the previous code snippet, we iterated over the dataset in batches, generating embeddings for the synthetic queries in the `positive` column using our fine-tuned model. We then created a Pandas dataframe, to include the `query`, `text`, and `vector` columns. This dataframe combines the `positive` and `anchor` columns with the freshly generated embeddings, respectively.
 
-Let's see it in action by making a query. For a sample query: "How can I get the current user?" (using the Argilla SDK), we will obtain the embedding using our custom embedding model, search for the first 3 occurrences in our table (using the `cosine` metric), and extract just the `text` column, which corresponds to the chunk of the docs:
+Now, let's put our vector database to the test! For a sample query, "How can I get the current user?" (using the Argilla SDK), we'll generate the embedding using our custom embedding model. We'll then search for the top 3 most similar occurrences in our table, leveraging the `cosine` metric to measure similarity. Finally, we'll extract the relevant `text` column, which corresponds to the chunk of documentation that best matches our query:
 
 ```python
 query = "How can I get the current user?"
@@ -804,6 +841,10 @@ retrieved = (
         .to_list()
 )
 ```
+
+<details close>
+<summary>Click to see the result</summary>
+<br>
 
 This would be the result:
 
@@ -834,7 +875,10 @@ rg.User
         heading_level: 3
 ```
 
-From what can be seen, the first row seems to contain information related to the query (we should use `client.me` to get the current user) and also some extra content due to the chunking strategy that seems to include code from the API reference. The chunk could be cleaner, and we could iterate on the chunking strategy (reviewing the dataset in Argilla can help a lot with this step), but it seems good enough to continue with it.
+</details>
+
+
+Let's dive into the first row of our dataset and see what insights we can uncover. At first glance, it appears to contain information related to the query, which is exactly what we'd expect. To get the current user, we can utilize the `client.me` method. However, we also notice some extraneous content, which is likely a result of the chunking strategy employed. This strategy, while effective, could benefit from some refinement. By reviewing the dataset in Argilla, we can gain a deeper understanding of how to optimize our chunking approach, ultimately leading to a more streamlined dataset. For now, though, it seems like a solid starting point to build upon.
 
 #### Store the database in the Hugging Face Hub
 
@@ -853,13 +897,13 @@ upload_database(
 )
 ```
 
-This will create a new file called `lancedb.tar.gz` (it can be seen at [`plaguss/argilla_sdk_docs_queries`](https://huggingface.co/datasets/plaguss/argilla_sdk_docs_queries/tree/main) files), with the vector database. And we can we can just download in the same way (again, the functions can be seen in the notebook):
+The final step in our database storage journey is just a command away! By running the function, we'll create a brand new file called `lancedb.tar.gz`, which will neatly package our vector database. You can take a sneak peek at the resulting file in the [`plaguss/argilla_sdk_docs_queries`](https://huggingface.co/datasets/plaguss/argilla_sdk_docs_queries/tree/main) repository on the Hugging Face Hub, where it's stored alongside other essential files.
 
 ```python
 db_path = download_database(repo_id)
 ```
 
-Now we would have the database downloaded (by default, the file will be placed at `Path.home() / ".cache/argilla_sdk_docs_db"`, but this can be easily changed), and the path pointing to it. We can connect again to it and check everything works as expected:
+The moment of truth has arrived! With our database successfully downloaded, we can now verify that everything is in order. By default, the file will be stored at `Path.home() / ".cache/argilla_sdk_docs_db"`, but can be easily customized. We can connect again to it and check everything works as expected:
 
 ```python
 db = lancedb.connect(str(db_path))
@@ -911,9 +955,9 @@ All the pieces are ready for our chatbot; we need to connect them and make them 
 
 ### The Gradio App
 
-Using [gradio](https://www.gradio.app/), we can easily create chatbot apps. This will be a simple interface to showcase our RAG chatbot. You can take a look at the app in the following script: [app.py](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/app/app.py).
+Let's bring the RAG app to life! Using [gradio](https://www.gradio.app/), we can effortlessly create chatbot apps. In this case, we'll design a simple yet effective interface to showcase our chatbot's capabilities. To see the app in action, take a look at the [app.py](https://github.com/argilla-io/argilla-sdk-chatbot/blob/develop/app/app.py) script in the Argilla SDK Chatbot repository on GitHub.
 
-Let's start by looking at the final result to see how easy it is to have a cool interface like this:
+Before we dive into the details of building our chatbot app, let's take a step back and admire the final result. With just a few lines of code, we've managed to create a user-friendly interface that brings our RAG chatbot to life.
 
 ![chatty](./assets/blog/assets/argilla-sdk-chatbot/img_1.png)
 
@@ -937,11 +981,11 @@ gr.ChatInterface(
 ).launch()
 ```
 
-And that's it!! There is an awesome guide to show you how to create a [Chatbot with Gradio](https://www.gradio.app/guides/creating-a-chatbot-fast). You can take a look and see how to make your own, but it couldn't be simpler.
+And there you have it! If you're eager to learn more about creating your own chatbot, be sure to check out Gradio's excellent guide on [Chatbot with Gradio](https://www.gradio.app/guides/creating-a-chatbot-fast). It's a treasure trove of knowledge that will have you building your own chatbot in no time.
 
-Let's review the key components of the `app.py` script to understand how it works, focusing on the main parts until we reach the `chatty` function. We will omit some details for brevity.
+Now, let's delve deeper into the inner workings of our `app.py` script. We'll break down the key components, focusing on the essential elements that bring our chatbot to life. To keep things concise, we'll gloss over some of the finer details.
 
-Let's start with the `Database` class:
+First up, let's examine the `Database` class, the backbone of our chatbot's knowledge and functionality. This component plays a vital role in storing and retrieving the data that fuels our chatbot's conversations:
 
 <details close>
 <summary>Click to see Database class</summary>
@@ -1011,7 +1055,9 @@ class Database:
 
 </details><p>
 
-That's all we need to deal with our database. Once our embedding model is downloaded (as shown in the previous section using `lancedb`), we can instantiate the class, downloading the database to wherever the app is deployed (in this case, in the Hugging Face Space where we will deploy it), and we will be ready to go:
+With our `Database` class in place, we've successfully bridged the gap between our chatbot's conversational flow and the knowledge stored in our database. Now, let's bring everything together! Once we've downloaded our embedding model  (the script will do it automatically), we can instantiate the `Database` class, effectively deploying our database to the desired location - in this case, our Hugging Face Space.
+
+This marks a major milestone in our chatbot development journey. With our database integrated and ready for action, we're just a step away from unleashing our chatbot's full potential.
 
 ```python
 database = Database(settings=settings)  # The settings can be seen in the following snippet
@@ -1061,7 +1107,9 @@ class Settings:
 
 </details>
 
-With the database ready, we need our model prepared to handle queries. For this, we will use the [inference endpoints](https://huggingface.co/inference-endpoints/dedicated). They are easy to work with using the [`inference client`](https://huggingface.co/docs/text-generation-inference/basic_tutorials/consuming_tgi#inference-client) from the `huggingface_hub` library:
+The final piece of the puzzle is now in place - our database is ready to fuel our chatbot's conversations. Next, we need to prepare our model to handle the influx of user queries. This is where the power of [inference endpoints](https://huggingface.co/inference-endpoints/dedicated) comes into play. These dedicated endpoints provide a seamless way to deploy and manage our model, ensuring it's always ready to respond to user input.
+
+Fortunately, working with inference endpoints is a breeze, thanks to the [`inference client`](https://huggingface.co/docs/text-generation-inference/basic_tutorials/consuming_tgi#inference-client) from the `huggingface_hub` library:
 
 ```python
 def get_client_and_tokenizer(
@@ -1082,7 +1130,7 @@ def get_client_and_tokenizer(
 client, tokenizer = get_client_and_tokenizer()
 ```
 
-Now that the components are ready, we need a function to prepare the prompt to be passed to our client:
+With our components in place, we've reached the stage of preparing the prompt that will be fed into our client. This prompt will serve as the input that sparks the magic of our machine learning model, guiding it to generate a response that's both accurate and informative, while avoiding answering unrelated questions. In this section, we'll delve into the details of crafting a well-structured prompt that sets our model up for success. The `prepare_input` function will prepare the conversation, applying the prompt and the chat template to be passed to the model:
 
 ```python
 def prepare_input(message: str, history: list[tuple[str, str]]) -> str:
@@ -1111,7 +1159,7 @@ def prepare_input(message: str, history: list[tuple[str, str]]) -> str:
     )[0]
 ```
 
-This function will take the same arguments `message` and `history` that the gradio [`ChatInterface`](https://www.gradio.app/docs/gradio/chatinterface) supplies us, obtain the documentation pieces from the database to help the LLM with the response, and prepare the prompt to be passed to our `LLM` model.
+This function will take two arguments: `message` and `history` courtesy of the gradio [`ChatInterface`](https://www.gradio.app/docs/gradio/chatinterface), obtain the documentation pieces from the database to help the LLM with the response, and prepare the prompt to be passed to our `LLM` model.
 
 <details close>
 <summary>Click to see the system prompt and the bot template</summary>
@@ -1189,10 +1237,7 @@ You can make use of the chunks of documents in the context to help you generatin
 
 </details>
 
-
-Finally, the `chatty` function only needs to call the previous `prepare_input` and send it to the client. We will yield the stream as we obtain the results instead of waiting for the final outcome to be ready:
-
-And finally the `chatty` function. It prepares the input to be passed to the client, and sends us the stream as it's being generated. Once it finishes, the interaction with the chatbot will be saved so we can review the conversation afterwards and improve the model:
+We've reached the culmination of our conversational AI system: the `chatty` function. This function serves as the orchestrator, bringing together the various components we've built so far. Its primary responsibility is to invoke the `prepare_input` function, which crafts the prompt that will be passed to the client. Then, we yield the stream of text as it's being generated, and once the response is finished, the conversation history will be saved, providing us with a valuable resource to review and refine our model, ensuring it continues to improve with each iteration.
 
 ```python
 def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None, None]:
@@ -1224,31 +1269,49 @@ def chatty(message: str, history: list[tuple[str, str]]) -> Generator[str, None,
     )
 ```
 
-The app is ready! We can test it locally by running `python app.py`, the only requirement is having access to the model deployed in the inference endpoints, in this case we are using Llama 3 70B, but you can choose your own and tweak as needed.
+The moment of truth has arrived! Our app is now ready to be put to the test. To see it in action, simply run `python app.py` in your local environment. But before you do, make sure you have access to a deployed model at an inference endpoint. In this example, we're using the powerful Llama 3 70B model, but feel free to experiment with other models that suit your needs. By tweaking the model and fine-tuning the app, you can unlock its full potential and explore new possibilities in AI development.
 
 ### Deploy the ChatBot app on Hugging Face Spaces
 
-Now that we have the app working, it's time to share it. You can take a look at this [gradio guide](https://www.gradio.app/guides/sharing-your-app). We will host it on Hugging Face Spaces.
+---
+Now that our app is up and running, it's time to share it with the world! To deploy our app and make it accessible to others, we'll follow the steps outlined in [Gradio's guide](https://www.gradio.app/guides/sharing-your-app) to sharing your app. Our chosen platform for hosting is Hugging Face Spaces, a fantastic tool for showcasing AI-powered projects.
 
-You can follow the steps in there, which basically consist of adding a `requirements.txt` file to the repository (take a look to learn more about [spaces dependencies]()), adding the `HF_API_TOKEN` (or the name you use for your Hugging Face token) as a secret ([this guide](https://huggingface.co/docs/hub/spaces-overview#managing-secrets) contains all the relevant information you may need), and uploading the `app.py` file. The Space files can be seen [here](https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space/tree/main).
+To get started, we'll need to add a `requirements.txt` file to our repository, which lists the dependencies required to run our app. This is a crucial step in ensuring that our app can be easily reproduced and deployed. You can learn more about managing dependencies in Hugging Face Spaces [spaces dependencies](https://huggingface.co/docs/hub/spaces-dependencies).
 
-After the app has been built, we should be able to see our app in the following link (with the corresponding user/space name you gave to your app):
+Next, we'll need to add our Hugging Face API token as a secret, following the instructions in [this guide](https://huggingface.co/docs/hub/spaces-overview#managing-secrets). This will allow our app to authenticate with the Hugging Face ecosystem.
+
+Once we've uploaded our `app.py` file, our Space will be built, and we'll be able to access our app at the following link:
 
 > https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space
 
+Take a look at our example Space files here to see how it all comes together. By following these steps, you'll be able to share your own AI-powered app with the world and collaborate with others in the Hugging Face community.
+
 ### Playing around with our ChatBot
 
-We've indicated some default queries you can use, but you can also try others, like `What are the Settings in the new SDK?`:
+We can now put the Chatbot to the test. We've provided some default queries to get you started, but feel free to experiment with your own questions. For instance, you could ask: `What are the Settings in the new SDK?`
+
+As you can see from the screenshot below, our chatbot is ready to provide helpful responses to your queries:
 
 ![chatbot img](./assets/blog/assets/argilla-sdk-chatbot/chatbot.png)
 
-Another possibility is asking if it can generate some settings for a dataset like the one we created in the [An Argilla dataset with triplets to fine-tune an embedding model](#an-A:rgilla-dataset-with-triplets-to-fine-tune-an-embedding-model) section.
+But that's not all! You can also challenge our chatbot to generate settings for a specific dataset, like the one we created earlier in this tutorial. For example, you could ask it to suggest settings for a dataset designed to fine-tune an embedding model, similar to the one we explored in the [An Argilla dataset with triplets to fine-tune an embedding model](#an-A:rgilla-dataset-with-triplets-to-fine-tune-an-embedding-model) section.
+
+Take a look at the screenshot below to see how our chatbot responds to this type of query.
 
 ![chatbot sentence-embedding](./assets/blog/assets/argilla-sdk-chatbot/chatbot-sentence-embeddings.png)
 
+Go ahead, ask your questions, and see what insights our chatbot can provide!
 
 ## Next steps
 
-- Improve the chunking strategy: Explore new chunk strategies, play around with different parameters, chunk sizes, etc...
-- Implement some deduplication/filter pairs in the training dataset.
-- Include sources for the responses, so the user can click and go to the documentation.
+In this tutorial, we've successfully built a chatbot that can provide helpful responses to questions about the Argilla SDK and its applications. By leveraging the power of Llama 3 70B and Gradio, we've created a user-friendly interface that can assist developers in understanding how to work with datasets and fine-tune embedding models.
+
+However, our chatbot is just the starting point, and there are many ways we can improve and expand its capabilities. Here are some possible next steps to tackle:
+
+- Improve the chunking strategy: Experiment with different chunking strategies, parameters, and sizes to optimize the chatbot's performance and response quality.
+
+- Implement deduplication and filtering: Add deduplication and filtering mechanisms to the training dataset to remove duplicates and irrelevant information, ensuring that the chatbot provides accurate and concise responses.
+
+- Include sources for responses: Enhance the chatbot's responses by including links to relevant documentation and sources, allowing users to dive deeper into the topics and explore further.
+
+By addressing these areas, we can take our chatbot to the next level, making it an even more valuable resource for developers working with the Argilla SDK. The possibilities are endless, and we're excited to see where this project will go from here. Stay tuned for future updates and improvements!
