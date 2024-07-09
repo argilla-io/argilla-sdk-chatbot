@@ -12,9 +12,15 @@ authors:
 
 ## TL;DR
 
-Discover how to build a Chatbot for a tool of your choice (Argilla 2.0 SDK in this case) that can understand technical documentation and chat with users about it. In this article, we'll show you how to leverage `distilabel` and fine-tune a custom embedding model to create a conversational model that's both accurate and engaging. 
+Discover how to build a Chatbot for a tool of your choice ([Argilla 2.0](https://github.com/argilla-io/argilla) in this case) that can understand technical documentation and chat with users about it. 
 
-This article outlines the process of creating a Chatbot for Argilla 2.0. We will create a synthetic dataset from the technical documentation to fine-tune a custom embedding model, create a vector database to store and retrieve the documentation and deploy the final Chatbot to a Hugging Face Space allowing users to interact with it, storing the interactions in Argilla for continuous improvement.
+In this article, we'll show you how to leverage [distilabel](https://github.com/argilla-io/distilabel) and fine-tune a custom embedding model to create a conversational model that's both accurate and engaging. 
+
+This article outlines the process of creating a Chatbot for Argilla 2.0. We will:
+
+* create a synthetic dataset from the technical documentation to fine-tune a custom embedding model,
+* create a vector database to store and retrieve the documentation and
+* deploy the final Chatbot to a Hugging Face Space allowing users to interact with it, storing the interactions in Argilla for continuous evaluation and improvement.
 
 Click the next image to go to the app.
 
