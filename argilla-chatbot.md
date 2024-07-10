@@ -25,7 +25,7 @@ This article outlines the process of creating a Chatbot for Argilla 2.0. We will
 
 Click the next image to go to the app.
 
-<a href="https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space" rel="some text">![argilla-sdk-chatbot](./assets/blog/assets/argilla-sdk-chatbot/chatbot.png)</a>
+<a href="https://huggingface.co/spaces/plaguss/argilla-sdk-chatbot-space" rel="some text">![argilla-sdk-chatbot](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/chatbot.png)</a>
 
 
 ## Table of Contents
@@ -530,7 +530,7 @@ dataset.records.log(records=data, mapping={"filename": "filename", "chunks": "ch
 
 These are the kind of examples you could expect to see:
 
-![argilla-img-1](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-1.png)
+![argilla-img-1](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/argilla-img-1.png)
 
 #### An Argilla dataset with triplets to fine-tune an embedding model
 
@@ -576,7 +576,7 @@ Let's take a closer look at the structure of our dataset, which consists of thre
 
 An example can be seen in the following image:
 
-![argilla-img-2](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-2.png)
+![argilla-img-2](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/argilla-img-2.png)
 
 The dataset settings we've established so far have been focused on exploring our dataset, but we can take it a step further. By customizing these settings, we can identify and correct incorrect examples, refine the quality of generated questions, and iteratively improve our dataset to better suit our needs.
 
@@ -637,7 +637,7 @@ In this dataset, we'll define two essential fields: `instruction` and `response`
 
 An example can be seen in the following image:
 
-![argilla-img-3](/assets/blog/assets/argilla-sdk-chatbot/argilla-img-3.png)
+![argilla-img-3](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/argilla-img-3.png)
 
 Once our chatbot has garnered significant user engagement, this dataset can serve as a valuable resource to refine and enhance our model, allowing us to iterate and improve its performance based on real-world interactions.
 
@@ -966,7 +966,7 @@ Let's bring the RAG app to life! Using [gradio](https://www.gradio.app/), we can
 
 Before we dive into the details of building our chatbot app, let's take a step back and admire the final result. With just a few lines of code, we've managed to create a user-friendly interface that brings our RAG chatbot to life.
 
-![chatty](./assets/blog/assets/argilla-sdk-chatbot/img_1.png)
+![chatty](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/img_1.png)
 
 ```python
 import gradio as gr
@@ -1299,13 +1299,13 @@ We can now put the Chatbot to the test. We've provided some default queries to g
 
 As you can see from the screenshot below, our chatbot is ready to provide helpful responses to your queries:
 
-![chatbot img](./assets/blog/assets/argilla-sdk-chatbot/chatbot.png)
+![chatbot img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/chatbot.png)
 
 But that's not all! You can also challenge our chatbot to generate settings for a specific dataset, like the one we created earlier in this tutorial. For example, you could ask it to suggest settings for a dataset designed to fine-tune an embedding model, similar to the one we explored in the [An Argilla dataset with triplets to fine-tune an embedding model](#an-A:rgilla-dataset-with-triplets-to-fine-tune-an-embedding-model) section.
 
 Take a look at the screenshot below to see how our chatbot responds to this type of query.
 
-![chatbot sentence-embedding](./assets/blog/assets/argilla-sdk-chatbot/chatbot-sentence-embeddings.png)
+![chatbot sentence-embedding](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/argilla-chatbot/chatbot-sentence-embeddings.png)
 
 Go ahead, ask your questions, and see what insights our chatbot can provide!
 
